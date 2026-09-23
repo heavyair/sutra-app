@@ -250,6 +250,7 @@
       e.preventDefault();
       if (self.fading) return;
       self.drawing = true;
+      self._smoothSpeed = null; // 每笔重新平滑测速
       self._bristlePhase = Math.random() * Math.PI * 2; // 每笔毛丝走向不同
       self._bristleDist = 0;
       self.points = [self._pos(e)];
@@ -264,8 +265,11 @@
       var last = self.points[self.points.length - 1];
       self.points.push(p);
       var dt = Math.max(1, p.t - last.t);
-      var speed = Math.hypot(p.x - last.x, p.y - last.y) / dt;
-      var w = self._widthFor(speed);
+      // 瞬时速度做上限裁剪 + 指数滑动平均：事件批量到达或时间戳抖动时笔锋不突变
+      var rawSpeed = Math.min(4, Math.hypot(p.x - last.x, p.y - last.y) / dt);
+      if (self._smoothSpeed == null) self._smoothSpeed = rawSpeed;
+      else self._smoothSpeed += (rawSpeed - self._smoothSpeed) * 0.35;
+      var w = self._widthFor(self._smoothSpeed);
       self.inkLength += Math.hypot(p.x - last.x, p.y - last.y);
       self._drawSegment(last, p, w);
       self._markCells(last, p, w);
@@ -317,18 +321,36 @@
     // 3) 毛丝：四缕偏置细锋，边缘参差；运笔越快越容易飞白（随机跳过，露出纸色）
     this._bristleDist = (this._bristleDist || 0) + len;
     var speedNorm = Math.min(1, len / 24);
-    var lanes = [-0.42, -0.2, 0.2, 0.42];
+    var lanes = [-0.46, -0.22, 0.22, 0.46];
     var phase = this._bristlePhase || 0;
     for (var k = 0; k < lanes.length; k++) {
       if (Math.random() < speedNorm * 0.45) continue; // 飞白
       var sway = Math.sin(this._bristleDist * 0.11 + k * 1.7 + phase) * w * 0.07;
       var off = lanes[k] * w + sway;
-      ctx.strokeStyle = 'rgba(24,18,12,0.5)';
+      ctx.strokeStyle = 'rgba(24,18,12,0.6)';
       ctx.lineWidth = Math.max(1, w * 0.20);
       ctx.beginPath();
       ctx.moveTo(a.x + nx * off, a.y + ny * off);
       ctx.lineTo(b.x + nx * off, b.y + ny * off);
       ctx.stroke();
+    }
+    // 4) 飞白：快速行笔时在主锋内部擦出纸色丝缕（destination-out 透出宣纸底）；
+    //    固定缕位 + 缓慢起伏，丝缕沿笔画连贯不断
+    if (speedNorm > 0.3) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      var feiLanes = [-0.28, 0.08, 0.34];
+      for (var sIdx = 0; sIdx < feiLanes.length; sIdx++) {
+        var soff = (feiLanes[sIdx] + Math.sin(this._bristleDist * 0.008 + sIdx * 2.1 + phase) * 0.08) * w;
+        var sAlpha = 0.30 + 0.25 * Math.sin(this._bristleDist * 0.006 + sIdx * 1.7 + phase * 0.7);
+        ctx.strokeStyle = 'rgba(0,0,0,' + Math.max(0.12, sAlpha).toFixed(2) + ')';
+        ctx.lineWidth = Math.max(1, w * 0.10);
+        ctx.beginPath();
+        ctx.moveTo(a.x + nx * soff, a.y + ny * soff);
+        ctx.lineTo(b.x + nx * soff, b.y + ny * soff);
+        ctx.stroke();
+      }
+      ctx.restore();
     }
   };
 
