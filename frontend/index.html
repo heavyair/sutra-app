@@ -24,7 +24,29 @@
     </div>
   </section>
 
-  <!-- 2. 经文库列表 -->
+  <!-- 2. 注册 / 登录 -->
+  <section id="screen-auth" class="screen">
+    <div class="invite-card">
+      <div class="invite-seal">🪷</div>
+      <h1 id="auth-title">注册</h1>
+      <p class="invite-sub" id="auth-sub">推荐码验证通过，请注册账号</p>
+      <div class="filter-row" style="justify-content:center">
+        <button class="chip active" id="chip-mode-register">注册</button>
+        <button class="chip" id="chip-mode-login">登录</button>
+      </div>
+      <div class="filter-row" style="justify-content:center;margin-top:8px">
+        <button class="chip active" id="chip-type-phone">手机</button>
+        <button class="chip" id="chip-type-email">邮箱</button>
+      </div>
+      <input id="auth-account" class="invite-input" placeholder="手机号" inputmode="tel" autocomplete="tel">
+      <input id="auth-password" class="invite-input" type="password" placeholder="密码（至少 6 位）" autocomplete="current-password">
+      <button id="btn-auth-submit" class="btn-primary">注册</button>
+      <p id="auth-msg" class="msg"></p>
+      <button id="btn-auth-reinvite" class="btn-ghost">重新输入推荐码</button>
+    </div>
+  </section>
+
+  <!-- 3. 经文库列表 -->
   <section id="screen-library" class="screen">
     <header class="topbar"><h2>经文库</h2></header>
     <div class="filter-row">

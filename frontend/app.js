@@ -1,6 +1,6 @@
 /* 抄经应用 · 主流程（无构建、原生 JS）
  *
- * 流程：推荐码 → 经文库 → 选字体 → 开场（经名2秒 → 段落慢读高亮）→ 选笔 →
+ * 流程：推荐码 → 注册/登录（手机或邮箱）→ 经文库 → 选字体 → 开场（经名2秒 → 段落慢读高亮）→ 选笔 →
  *       全屏单字临摹（虚影字）→ 自动检测写成 → 缓缓隐藏 → 下一字 →
  *       全部写完 → 欣赏 / PDF / 分享
  * 工具（左下角 ☰）：经文 · 字体 · 笔 · 背景音 · 欣赏 · 分享（点开散布全屏）
@@ -55,10 +55,25 @@
     window.scrollTo(0, 0);
   }
 
+  function getToken() {
+    try { return localStorage.getItem('sutra_token'); } catch (e) { return null; }
+  }
+
   function api(path, opts) {
-    return fetch(path, Object.assign({
-      headers: { 'Content-Type': 'application/json' },
-    }, opts || {})).then(function (r) { return r.json(); });
+    opts = opts || {};
+    var headers = { 'Content-Type': 'application/json' };
+    var token = getToken();
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    return fetch(path, Object.assign({ headers: headers }, opts)).then(function (r) {
+      return r.json().then(function (body) {
+        if (r.status === 401 && body && body.need_auth && !opts.noAuthRedirect) {
+          try { localStorage.removeItem('sutra_token'); } catch (e) {}
+          enterAuth('login', '登录已过期，请重新登录');
+          body.authExpired = true;
+        }
+        return body;
+      });
+    });
   }
 
   function escapeHtml(s) {
@@ -78,8 +93,7 @@
     }).then(function (res) {
       if (res.ok) {
         try { localStorage.setItem('sutra_invite', code); } catch (e) {}
-        loadLibrary();
-        showScreen('screen-library');
+        enterAuth('register');
       } else {
         msg.textContent = res.message || '验证失败';
       }
@@ -88,14 +102,92 @@
     });
   });
 
-  try {
-    if (localStorage.getItem('sutra_invite')) {
-      loadLibrary();
-      showScreen('screen-library');
-    }
-  } catch (e) {}
+  /* ---------- 2. 注册 / 登录 ---------- */
+  var authMode = 'register';   // register | login
+  var authType = 'phone';      // phone | email
 
-  /* ---------- 2. 经文库 ---------- */
+  function refreshAuthUI() {
+    $('auth-title').textContent = authMode === 'register' ? '注册' : '登录';
+    $('auth-sub').textContent = authMode === 'register'
+      ? '推荐码验证通过，请注册账号'
+      : '欢迎回来，请登录';
+    $('btn-auth-submit').textContent = authMode === 'register' ? '注册' : '登录';
+    $('chip-mode-register').classList.toggle('active', authMode === 'register');
+    $('chip-mode-login').classList.toggle('active', authMode === 'login');
+    $('chip-type-phone').classList.toggle('active', authType === 'phone');
+    $('chip-type-email').classList.toggle('active', authType === 'email');
+    var acc = $('auth-account');
+    acc.placeholder = authType === 'phone' ? '手机号' : '邮箱';
+    acc.inputMode = authType === 'phone' ? 'tel' : 'email';
+    $('auth-msg').textContent = '';
+  }
+
+  function enterAuth(mode, notice) {
+    authMode = mode || 'register';
+    refreshAuthUI();
+    if (notice) $('auth-msg').textContent = notice;
+    showScreen('screen-auth');
+  }
+
+  $('chip-mode-register').addEventListener('click', function () { authMode = 'register'; refreshAuthUI(); });
+  $('chip-mode-login').addEventListener('click', function () { authMode = 'login'; refreshAuthUI(); });
+  $('chip-type-phone').addEventListener('click', function () { authType = 'phone'; refreshAuthUI(); });
+  $('chip-type-email').addEventListener('click', function () { authType = 'email'; refreshAuthUI(); });
+
+  $('btn-auth-submit').addEventListener('click', function () {
+    var account = $('auth-account').value.trim();
+    var password = $('auth-password').value;
+    var msg = $('auth-msg');
+    if (!account) { msg.textContent = authType === 'phone' ? '请输入手机号' : '请输入邮箱'; return; }
+    if (password.length < 6) { msg.textContent = '密码至少 6 位'; return; }
+    msg.textContent = authMode === 'register' ? '注册中…' : '登录中…';
+    var path = authMode === 'register' ? '/api/register' : '/api/login';
+    var body = { account: account, password: password };
+    if (authMode === 'register') {
+      body.account_type = authType;
+      try { body.invite_code = localStorage.getItem('sutra_invite') || ''; } catch (e) {}
+    }
+    api(path, { method: 'POST', body: JSON.stringify(body), noAuthRedirect: true })
+      .then(function (res) {
+        if (res.ok && res.token) {
+          try { localStorage.setItem('sutra_token', res.token); } catch (e) {}
+          $('auth-password').value = '';
+          loadLibrary();
+          showScreen('screen-library');
+        } else {
+          msg.textContent = res.message || '失败，请重试';
+        }
+      })
+      .catch(function () { msg.textContent = '网络错误，请重试'; });
+  });
+
+  $('btn-auth-reinvite').addEventListener('click', function () {
+    try { localStorage.removeItem('sutra_invite'); } catch (e) {}
+    $('invite-code').value = '';
+    $('invite-msg').textContent = '';
+    showScreen('screen-invite');
+  });
+
+  /* 启动：有 token 先校验 → 经文库；有推荐码 → 注册/登录；都没有 → 推荐码页 */
+  (function boot() {
+    var token = getToken();
+    var code = null;
+    try { code = localStorage.getItem('sutra_invite'); } catch (e) {}
+    function enterAfterInvite() { showScreen(code ? 'screen-auth' : 'screen-invite'); }
+    if (token) {
+      api('/api/me', { noAuthRedirect: true }).then(function (res) {
+        if (res.ok) { loadLibrary(); showScreen('screen-library'); }
+        else {
+          try { localStorage.removeItem('sutra_token'); } catch (e) {}
+          enterAfterInvite();
+        }
+      }).catch(enterAfterInvite);
+    } else {
+      enterAfterInvite();
+    }
+  })();
+
+  /* ---------- 3. 经文库 ---------- */
   function loadLibrary() {
     api('/api/sutras').then(function (res) {
       if (!res.ok) return;
@@ -130,7 +222,7 @@
     });
   });
 
-  /* ---------- 3. 选经文 → 选字体 ---------- */
+  /* ---------- 4. 选经文 → 选字体 ---------- */
   function openSutra(id) {
     api('/api/sutra/' + encodeURIComponent(id)).then(function (res) {
       if (!res.ok) return;
@@ -179,7 +271,7 @@
     startWriting(state.flowToken);
   });
 
-  /* ---------- 4. 开场：经名 2 秒 → 段落慢读高亮 → 选笔 ---------- */
+  /* ---------- 5. 开场：经名 2 秒 → 段落慢读高亮 → 选笔 ---------- */
   function firstParagraph(text) {
     var t = (text || '').replace(/\s+/g, '');
     var parts = t.split(/([。！？；\n])/);
@@ -242,7 +334,7 @@
     })();
   }
 
-  /* ---------- 5. 选笔 ---------- */
+  /* ---------- 6. 选笔 ---------- */
   function renderPenCards() {
     var c = $('pen-cards');
     c.innerHTML = '';
@@ -279,7 +371,7 @@
     }
   });
 
-  /* ---------- 6. 全屏单字临摹 ---------- */
+  /* ---------- 7. 全屏单字临摹 ---------- */
   function ensurePad() {
     if (pad) return;
     pad = new WritingPad($('paper-canvas'), $('ink-canvas'), {
@@ -373,7 +465,7 @@
     music.setProgress(p); // 音乐随进度加层
   }
 
-  /* ---------- 7. 工具菜单 ---------- */
+  /* ---------- 8. 工具菜单 ---------- */
   function closeTools() {
     $('tools-menu').classList.remove('open');
     setTimeout(function () { $('tools-menu').classList.add('hidden'); }, 320);
@@ -438,7 +530,7 @@
     $('intro-overlay').classList.add('hidden');
   }
 
-  /* ---------- 8. 全部写完 ---------- */
+  /* ---------- 9. 全部写完 ---------- */
   function showDone() {
     var d = new Date();
     $('done-summary').textContent =
@@ -459,7 +551,7 @@
   $('btn-done-pdf').addEventListener('click', printWork);
   $('btn-done-share').addEventListener('click', shareWork);
 
-  /* ---------- 9. 欣赏 ---------- */
+  /* ---------- 10. 欣赏 ---------- */
   function openAppreciate() {
     $('work-title').textContent = state.sutra ? '《' + state.sutra.title + '》' : '';
     var d = new Date();
@@ -490,7 +582,7 @@
   $('btn-work-pdf').addEventListener('click', printWork);
   $('btn-work-share').addEventListener('click', shareWork);
 
-  /* ---------- 10. 生成 PDF（系统打印 → 存为 PDF） ---------- */
+  /* ---------- 11. 生成 PDF（系统打印 → 存为 PDF） ---------- */
   function buildPrintSheet() {
     var ps = $('print-sheet');
     var d = new Date();
@@ -511,7 +603,7 @@
     setTimeout(function () { window.print(); }, 300);
   }
 
-  /* ---------- 11. 分享 ---------- */
+  /* ---------- 12. 分享 ---------- */
   function shareWork() {
     var title = state.sutra ? '《' + state.sutra.title + '》' : '抄经';
     var text = '我在抄' + title + '，已写 ' + state.workImages.length + ' 字，一起来静心。';

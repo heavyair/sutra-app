@@ -11,16 +11,18 @@
     SECRET_KEY  Flask secret（默认每次启动随机生成；生产环境请设置固定值）
     PORT        监听端口（默认 5000）
 
-注意: 当前 user_id 由客户端传入（stub），正式上线前需接上登录态校验。
+注意: 写入接口（点赞/留言/上传）需要 Authorization: Bearer token 登录态。
 """
 import json
 import os
+import re
 import secrets
 import sqlite3
 import time
 from datetime import datetime
 
 from flask import Flask, abort, jsonify, request, send_from_directory
+from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -48,6 +50,28 @@ def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def migrate_auth():
+    """账号体系迁移：给 users 表加 account/account_type/password_hash，加 sessions 表。幂等。"""
+    conn = get_db()
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+    if "account" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN account TEXT")
+    if "account_type" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN account_type TEXT")
+    if "password_hash" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_account ON users(account)")
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS sessions (
+             token      TEXT PRIMARY KEY,
+             user_id    INTEGER NOT NULL,
+             created_at TEXT DEFAULT (datetime('now'))
+           )"""
+    )
+    conn.commit()
+    conn.close()
 
 
 def init_db():
@@ -90,6 +114,7 @@ def init_db():
 
 
 init_db()
+migrate_auth()
 
 
 def allowed_file(filename):
@@ -126,14 +151,141 @@ def invite_verify():
     code = (data.get("code") or "").strip()
     if not code:
         return jsonify({"ok": False, "message": "推荐码不能为空"}), 400
+    ok, msg = check_invite(code)
+    if not ok:
+        return jsonify({"ok": False, "message": msg}), 404
+    return jsonify({"ok": True, "message": "验证通过"})
+
+
+# ---------- 账号体系 ----------
+
+PHONE_RE = re.compile(r"^\+?\d{7,15}$")
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def check_invite(code):
+    """返回 (是否有效, 提示信息)。"""
     conn = get_db()
     row = conn.execute("SELECT * FROM invite_codes WHERE code = ?", (code,)).fetchone()
     conn.close()
     if not row:
-        return jsonify({"ok": False, "message": "推荐码无效"}), 404
+        return False, "推荐码无效"
     if row["max_uses"] and row["used_count"] >= row["max_uses"]:
-        return jsonify({"ok": False, "message": "该推荐码已用完"}), 403
-    return jsonify({"ok": True, "message": "验证通过"})
+        return False, "该推荐码已用完"
+    return True, "验证通过"
+
+
+def normalize_account(account_type, account):
+    """返回 (是否合法, 规范化后的账号)。"""
+    account = (account or "").strip()
+    if account_type == "phone":
+        return bool(PHONE_RE.match(account)), account
+    if account_type == "email":
+        account = account.lower()
+        return bool(EMAIL_RE.match(account)), account
+    return False, account
+
+
+def current_user():
+    """从 Authorization: Bearer token 解析当前用户，无效返回 None。"""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        return None
+    token = auth[7:].strip()
+    if not token:
+        return None
+    conn = get_db()
+    row = conn.execute(
+        "SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?",
+        (token,),
+    ).fetchone()
+    conn.close()
+    return row
+
+
+def require_user():
+    u = current_user()
+    if not u:
+        return None, (jsonify({"ok": False, "message": "请先登录", "need_auth": True}), 401)
+    return u, None
+
+
+def issue_token(conn, user_id):
+    token = secrets.token_hex(32)
+    conn.execute("INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_id))
+    return token
+
+
+@app.route("/api/register", methods=["POST"])
+def register():
+    data = request.get_json(silent=True) or {}
+    code = (data.get("invite_code") or "").strip()
+    ok, msg = check_invite(code)
+    if not ok:
+        return jsonify({"ok": False, "message": msg}), 403
+    account_type = data.get("account_type")
+    valid, account = normalize_account(account_type, data.get("account"))
+    if not valid:
+        return jsonify({"ok": False, "message": "手机号或邮箱格式不正确"}), 400
+    password = data.get("password") or ""
+    if len(password) < 6:
+        return jsonify({"ok": False, "message": "密码至少 6 位"}), 400
+
+    conn = get_db()
+    if conn.execute("SELECT id FROM users WHERE account = ?", (account,)).fetchone():
+        conn.close()
+        return jsonify({"ok": False, "message": "该账号已注册，请直接登录"}), 409
+    cur = conn.execute(
+        "INSERT INTO users (account, account_type, password_hash, invite_code)"
+        " VALUES (?, ?, ?, ?)",
+        (account, account_type, generate_password_hash(password), code),
+    )
+    conn.execute(
+        "UPDATE invite_codes SET used_count = used_count + 1 WHERE code = ?", (code,)
+    )
+    token = issue_token(conn, cur.lastrowid)
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "token": token, "account": account})
+
+
+@app.route("/api/login", methods=["POST"])
+def login():
+    data = request.get_json(silent=True) or {}
+    account = (data.get("account") or "").strip()
+    if "@" in account:
+        account = account.lower()
+    password = data.get("password") or ""
+    conn = get_db()
+    user = conn.execute("SELECT * FROM users WHERE account = ?", (account,)).fetchone()
+    if (
+        not user
+        or not user["password_hash"]
+        or not check_password_hash(user["password_hash"], password)
+    ):
+        conn.close()
+        return jsonify({"ok": False, "message": "账号或密码不正确"}), 401
+    token = issue_token(conn, user["id"])
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "token": token, "account": user["account"]})
+
+
+@app.route("/api/me")
+def me():
+    u = current_user()
+    if not u:
+        return jsonify({"ok": False, "message": "请先登录", "need_auth": True}), 401
+    return jsonify(
+        {
+            "ok": True,
+            "user": {
+                "id": u["id"],
+                "account": u["account"],
+                "account_type": u["account_type"],
+            },
+        }
+    )
 
 
 @app.route("/api/sutras")
@@ -162,9 +314,12 @@ def sutra_detail(sutra_id):
 
 @app.route("/api/like", methods=["POST"])
 def like():
+    user, err = require_user()
+    if err:
+        return err
     data = request.get_json(silent=True) or {}
     sutra_id = data.get("sutra_id")
-    user_id = data.get("user_id")  # stub: 正式版改为从登录态取
+    user_id = user["id"]
     if not sutra_id:
         return jsonify({"ok": False, "message": "缺少 sutra_id"}), 400
     conn = get_db()
@@ -202,13 +357,16 @@ def comments():
     kind = data.get("kind", "text")  # text | audio | image | video
     if not sutra_id or kind not in ("text", "audio", "image", "video"):
         return jsonify({"ok": False, "message": "参数错误"}), 400
+    user, err = require_user()
+    if err:
+        return err
     conn = get_db()
     cur = conn.execute(
         "INSERT INTO comments (sutra_id, user_id, kind, body, file_url)"
         " VALUES (?, ?, ?, ?, ?)",
         (
             sutra_id,
-            data.get("user_id"),  # stub
+            user["id"],
             kind,
             data.get("body"),
             data.get("file_url"),
@@ -222,6 +380,9 @@ def comments():
 
 @app.route("/api/upload", methods=["POST"])
 def upload():
+    _, err = require_user()
+    if err:
+        return err
     if "file" not in request.files:
         return jsonify({"ok": False, "message": "没有文件"}), 400
     f = request.files["file"]
