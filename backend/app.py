@@ -152,7 +152,11 @@ def allowed_file(filename):
 # ---------- 前端静态文件 ----------
 @app.route("/")
 def index():
-    return send_from_directory(FRONTEND_DIR, "index.html")
+    # index.html 必须每次重新验证：它携带 JS/CSS 的版本号，
+    # 否则浏览器可能用旧 HTML 配旧 JS，或新旧混搭导致空指针
+    resp = send_from_directory(FRONTEND_DIR, "index.html")
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
 
 
 @app.route("/<path:filename>")
