@@ -200,6 +200,7 @@
           $('auth-password').value = '';
           $('auth-code').value = '';
           loadLibrary();
+          refreshLoginBtn();
           showScreen('screen-library');
         } else {
           msg.textContent = res.message || '失败，请重试';
@@ -215,22 +216,33 @@
     showScreen('screen-invite');
   });
 
-  /* 启动：有 token 先校验 → 经文库；有推荐码 → 注册/登录；都没有 → 推荐码页 */
-  (function boot() {
-    var token = getToken();
+  /* 登录按钮状态：未登录显示"登录"，已登录显示"已登录" */
+  function refreshLoginBtn() {
+    var btn = $('btn-goto-login');
+    if (btn) btn.textContent = getToken() ? '已登录' : '登录';
+  }
+
+  /* 经文库右上角：登录完全可选，不登录也能抄经 */
+  $('btn-goto-login').addEventListener('click', function () {
+    if (getToken()) return;   // 已登录，不再跳转
     var code = null;
     try { code = localStorage.getItem('sutra_invite'); } catch (e) {}
-    function enterAfterInvite() { showScreen(code ? 'screen-auth' : 'screen-invite'); }
+    if (code) { enterAuth('login'); } else { showScreen('screen-invite'); }
+  });
+
+  /* 启动：无需注册/登录，直接进入经文库；有 token 则静默校验登录态 */
+  (function boot() {
+    loadLibrary();
+    showScreen('screen-library');
+    refreshLoginBtn();
+    var token = getToken();
     if (token) {
       api('/api/me', { noAuthRedirect: true }).then(function (res) {
-        if (res.ok) { loadLibrary(); showScreen('screen-library'); }
-        else {
+        if (!res || !res.ok) {
           try { localStorage.removeItem('sutra_token'); } catch (e) {}
-          enterAfterInvite();
+          refreshLoginBtn();
         }
-      }).catch(enterAfterInvite);
-    } else {
-      enterAfterInvite();
+      }).catch(function () {});
     }
   })();
 
