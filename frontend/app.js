@@ -22,7 +22,7 @@
 
   var PENS = [
     { id: 'pencil', name: '铅笔', desc: '细线起稿 · 默认' },
-    { id: 'maobi', name: '毛笔', desc: '提按分明 · 随速变化' },
+    { id: 'maobi', name: '毛笔', desc: '浓墨毛丝 · 随速飞白' },
     { id: 'gangbi', name: '钢笔', desc: '流畅书写 · 粗细均匀' },
   ];
 
@@ -40,6 +40,9 @@
     workImages: [],
     flowToken: 0,
     completing: false,
+    pauses: [],        // 笔画间停顿时长（ms），用于学习书写节奏
+    pendingTimer: 0,   // 完成判定的延迟计时器
+    lastStrokeEnd: 0,  // 上一笔抬起的时间戳
   };
 
   var music = new MusicEngine();
@@ -47,6 +50,43 @@
 
   function $(id) { return document.getElementById(id); }
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  // 读入历史书写节奏（本机学习）
+  try {
+    var _p = JSON.parse(localStorage.getItem('sutra_pauses') || '[]');
+    if (Array.isArray(_p)) state.pauses = _p.filter(function (x) { return x > 0; }).slice(-60);
+  } catch (e) {}
+
+  function recordPause(ms) {
+    state.pauses.push(ms);
+    if (state.pauses.length > 60) state.pauses.shift();
+    try { localStorage.setItem('sutra_pauses', JSON.stringify(state.pauses)); } catch (e) {}
+  }
+
+  // 自适应等待：停顿中位数×2+300ms， clamp 到 0.9~2.8 秒；样本不足时默认 1.6 秒
+  function learnedDelay() {
+    var p = state.pauses;
+    if (p.length < 3) return 1600;
+    var s = p.slice().sort(function (a, b) { return a - b; });
+    var med = s[Math.floor(s.length / 2)];
+    return Math.min(2800, Math.max(900, Math.round(med * 2 + 300)));
+  }
+
+  function cancelPendingComplete() {
+    if (state.pendingTimer) { clearTimeout(state.pendingTimer); state.pendingTimer = 0; }
+  }
+
+  // 手指离开后不立刻判完成：等一等，若用户继续落笔则取消
+  function scheduleComplete() {
+    cancelPendingComplete();
+    var token = state.flowToken;
+    var delay = learnedDelay();
+    state.pendingTimer = setTimeout(function () {
+      state.pendingTimer = 0;
+      if (token !== state.flowToken || state.completing) return;
+      if (pad && pad.coverage() >= DONE_COVERAGE) charComplete(); // 重新核对（防中途橡皮擦除）
+    }, delay);
+  }
 
   function showScreen(id) {
     document.querySelectorAll('.screen').forEach(function (s) {
@@ -448,12 +488,23 @@
   function ensurePad() {
     if (pad) return;
     pad = new WritingPad($('paper-canvas'), $('ink-canvas'), {
+      onStrokeStart: function () {
+        // 落笔：取消待定的完成判定；记录与上一笔的停顿，学习书写节奏
+        cancelPendingComplete();
+        var now = Date.now();
+        if (state.lastStrokeEnd) {
+          var pause = now - state.lastStrokeEnd;
+          if (pause > 60 && pause < 8000) recordPause(pause);
+        }
+        state.lastStrokeEnd = 0;
+      },
       onStrokeEnd: function (cov, n) {
         if (state.completing) return;
+        state.lastStrokeEnd = Date.now();
         // 最小运笔：超过字区最大边的一半（防误触），单笔画字也能通过
         var minLen = pad.bbox ? Math.max(pad.bbox.w, pad.bbox.h) * 0.5 : 60;
         if (cov >= DONE_COVERAGE && pad.inkLength > minLen) {
-          charComplete();
+          scheduleComplete(); // 抬笔后等一等再判，写得慢的人不会被提前收卷
         } else if (n >= 2 && cov >= HINT_COVERAGE) {
           $('btn-force-next').classList.remove('hidden');
         }
@@ -465,6 +516,8 @@
 
   function beginChar() {
     state.completing = false;
+    cancelPendingComplete();
+    state.lastStrokeEnd = 0;
     $('btn-keep-editing').classList.add('hidden');
     $('btn-force-next').classList.add('hidden');
     var ch = state.chars[state.charIndex];
@@ -487,6 +540,7 @@
 
   function charComplete() {
     if (state.completing) return;
+    cancelPendingComplete();
     state.completing = true;
     $('btn-force-next').classList.add('hidden');
     var img = pad.snapshot();
@@ -508,10 +562,12 @@
   }
 
   $('btn-force-next').addEventListener('click', function () {
+    cancelPendingComplete();
     charComplete();
   });
 
   $('btn-keep-editing').addEventListener('click', function () {
+    cancelPendingComplete();
     state.completing = false;
     state.workImages.pop(); // 丢弃刚收录的成品
     pad.cancelFade();
@@ -522,6 +578,7 @@
   // 橡皮：一下清空重写（若在"缓缓隐藏"中点橡皮，视同继续改写）
   $('btn-eraser').addEventListener('click', function () {
     if (!pad) return;
+    cancelPendingComplete();
     if (state.completing) {
       state.completing = false;
       state.workImages.pop();

@@ -15,7 +15,7 @@
  *
  * 笔：
  *   铅笔：恒定细灰线
- *   毛笔：线宽随运笔速度变化（慢粗快细）
+ *   毛笔：浓墨大锋 + 晕染底层 + 毛丝缕锋；慢→粗浓，快→细并带飞白
  *   钢笔：恒定适中深色线
  *
  * 完成检测：虚影字像素 → 48×48 占用网格；墨迹落入的格子 / 字的格子 ≥ 阈值即判为写成。
@@ -199,8 +199,8 @@
   WritingPad.prototype._widthFor = function (speed) {
     if (this.pen === 'pencil') return PENS.pencil.width;
     if (this.pen === 'gangbi') return PENS.gangbi.width;
-    // 毛笔：慢→粗（最大 20），快→细（最小 3.5）
-    return Math.max(3.5, 20 - Math.min(16.5, speed * 70));
+    // 毛笔：慢→浓粗（最大 34），快→细（最小 6）；中速依然饱满，不再一快就只剩细线
+    return Math.max(6, 34 - Math.min(28, speed * 55));
   };
 
   WritingPad.prototype._colorFor = function () {
@@ -250,8 +250,11 @@
       e.preventDefault();
       if (self.fading) return;
       self.drawing = true;
+      self._bristlePhase = Math.random() * Math.PI * 2; // 每笔毛丝走向不同
+      self._bristleDist = 0;
       self.points = [self._pos(e)];
       try { self.ink.setPointerCapture(e.pointerId); } catch (err) {}
+      if (self.opts.onStrokeStart) self.opts.onStrokeStart();
       if (self.strokeCount === 0 && self.opts.onFirstStroke) self.opts.onFirstStroke();
     });
     this.ink.addEventListener('pointermove', function (e) {
@@ -284,12 +287,49 @@
 
   WritingPad.prototype._drawSegment = function (a, b, w) {
     var ctx = this.ictx;
-    ctx.strokeStyle = this._colorFor();
+    if (this.pen !== 'maobi') {
+      ctx.strokeStyle = this._colorFor();
+      ctx.lineWidth = w;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      return;
+    }
+    // ---- 毛笔：三层渲染 ----
+    var dx = b.x - a.x, dy = b.y - a.y;
+    var len = Math.hypot(dx, dy) || 0.001;
+    var nx = -dy / len, ny = dx / len; // 法线方向
+    // 1) 晕染底层：宽而淡，墨韵"浓"
+    ctx.strokeStyle = 'rgba(48,36,24,0.16)';
+    ctx.lineWidth = w * 1.6;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    // 2) 主锋：浓黑饱满
+    ctx.strokeStyle = 'rgba(24,18,12,0.93)';
     ctx.lineWidth = w;
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
     ctx.stroke();
+    // 3) 毛丝：四缕偏置细锋，边缘参差；运笔越快越容易飞白（随机跳过，露出纸色）
+    this._bristleDist = (this._bristleDist || 0) + len;
+    var speedNorm = Math.min(1, len / 24);
+    var lanes = [-0.42, -0.2, 0.2, 0.42];
+    var phase = this._bristlePhase || 0;
+    for (var k = 0; k < lanes.length; k++) {
+      if (Math.random() < speedNorm * 0.45) continue; // 飞白
+      var sway = Math.sin(this._bristleDist * 0.11 + k * 1.7 + phase) * w * 0.07;
+      var off = lanes[k] * w + sway;
+      ctx.strokeStyle = 'rgba(24,18,12,0.5)';
+      ctx.lineWidth = Math.max(1, w * 0.20);
+      ctx.beginPath();
+      ctx.moveTo(a.x + nx * off, a.y + ny * off);
+      ctx.lineTo(b.x + nx * off, b.y + ny * off);
+      ctx.stroke();
+    }
   };
 
   /* ---------- 缓缓隐藏 / 继续改写 ---------- */
