@@ -119,7 +119,9 @@
     var acc = $('auth-account');
     acc.placeholder = authType === 'phone' ? '手机号' : '邮箱';
     acc.inputMode = authType === 'phone' ? 'tel' : 'email';
+    $('auth-code-row').style.display = authMode === 'register' ? 'flex' : 'none';
     $('auth-msg').textContent = '';
+    $('auth-msg').style.color = '';
   }
 
   function enterAuth(mode, notice) {
@@ -134,17 +136,61 @@
   $('chip-type-phone').addEventListener('click', function () { authType = 'phone'; refreshAuthUI(); });
   $('chip-type-email').addEventListener('click', function () { authType = 'email'; refreshAuthUI(); });
 
+  var codeTimer = null;
+  $('btn-auth-send-code').addEventListener('click', function () {
+    var btn = $('btn-auth-send-code');
+    if (btn.disabled) return;
+    var account = $('auth-account').value.trim();
+    var msg = $('auth-msg');
+    msg.style.color = '';
+    if (!account) { msg.textContent = authType === 'phone' ? '请先输入手机号' : '请先输入邮箱'; return; }
+    msg.textContent = '发送中…';
+    api('/api/auth/send-code', {
+      method: 'POST',
+      body: JSON.stringify({ account_type: authType, account: account }),
+      noAuthRedirect: true,
+    }).then(function (res) {
+      if (res.ok) {
+        msg.style.color = 'var(--green, #2e7d32)';
+        msg.textContent = authType === 'phone' ? '短信验证码已发送' : '邮件验证码已发送，请查收';
+        var left = 60;
+        btn.disabled = true;
+        btn.textContent = left + ' 秒后重发';
+        if (codeTimer) clearInterval(codeTimer);
+        codeTimer = setInterval(function () {
+          left -= 1;
+          if (left <= 0) {
+            clearInterval(codeTimer);
+            btn.disabled = false;
+            btn.textContent = '发送验证码';
+          } else {
+            btn.textContent = left + ' 秒后重发';
+          }
+        }, 1000);
+      } else {
+        msg.textContent = res.message || '发送失败';
+      }
+    }).catch(function () { msg.textContent = '网络错误，请重试'; });
+  });
+
   $('btn-auth-submit').addEventListener('click', function () {
     var account = $('auth-account').value.trim();
     var password = $('auth-password').value;
     var msg = $('auth-msg');
+    msg.style.color = '';
     if (!account) { msg.textContent = authType === 'phone' ? '请输入手机号' : '请输入邮箱'; return; }
     if (password.length < 6) { msg.textContent = '密码至少 6 位'; return; }
+    var code = '';
+    if (authMode === 'register') {
+      code = $('auth-code').value.trim();
+      if (!/^\d{6}$/.test(code)) { msg.textContent = '请输入 6 位验证码'; return; }
+    }
     msg.textContent = authMode === 'register' ? '注册中…' : '登录中…';
     var path = authMode === 'register' ? '/api/register' : '/api/login';
     var body = { account: account, password: password };
     if (authMode === 'register') {
       body.account_type = authType;
+      body.code = code;
       try { body.invite_code = localStorage.getItem('sutra_invite') || ''; } catch (e) {}
     }
     api(path, { method: 'POST', body: JSON.stringify(body), noAuthRedirect: true })
@@ -152,6 +198,7 @@
         if (res.ok && res.token) {
           try { localStorage.setItem('sutra_token', res.token); } catch (e) {}
           $('auth-password').value = '';
+          $('auth-code').value = '';
           loadLibrary();
           showScreen('screen-library');
         } else {

@@ -52,6 +52,18 @@ python app.py
 
 环境变量：`SUTRA_DB`（数据库路径）、`SECRET_KEY`（生产务必设置固定值）、`PORT`。
 
+注册验证码（Docker 部署时写进 `/opt/sutra-app/.env`，不进 git）：
+
+| 变量 | 说明 |
+|---|---|
+| `SMTP_HOST` / `SMTP_PORT` | 发件 SMTP 服务器，如 `smtp.qq.com` / `587` |
+| `SMTP_USER` / `SMTP_PASS` | 发件账号与授权码（不是登录密码） |
+| `SMTP_FROM` | 发件人地址（可选，默认同 `SMTP_USER`） |
+| `TWILIO_SID` / `TWILIO_TOKEN` | Twilio 账号 SID 与 Auth Token |
+| `TWILIO_FROM` | Twilio 短信发送号码 |
+
+未配置时 `/api/auth/send-code` 会返回明确的"服务未配置"提示，不影响其他功能。
+
 ## 部署到 VPS（Ubuntu 示例）
 
 ```bash

@@ -39,6 +39,10 @@
         <button class="chip" id="chip-type-email">邮箱</button>
       </div>
       <input id="auth-account" class="invite-input" placeholder="手机号" inputmode="tel" autocomplete="tel">
+      <div id="auth-code-row" class="code-row">
+        <input id="auth-code" class="invite-input" placeholder="验证码" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
+        <button id="btn-auth-send-code">发送验证码</button>
+      </div>
       <input id="auth-password" class="invite-input" type="password" placeholder="密码（至少 6 位）" autocomplete="current-password">
       <button id="btn-auth-submit" class="btn-primary">注册</button>
       <p id="auth-msg" class="msg"></p>

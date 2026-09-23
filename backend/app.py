@@ -13,13 +13,18 @@
 
 注意: 写入接口（点赞/留言/上传）需要 Authorization: Bearer token 登录态。
 """
+import base64
 import json
 import os
 import re
 import secrets
+import smtplib
 import sqlite3
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 from flask import Flask, abort, jsonify, request, send_from_directory
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -50,6 +55,28 @@ def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def migrate_verification():
+    """验证码表（幂等）。"""
+    conn = get_db()
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS verification_codes (
+             id           INTEGER PRIMARY KEY AUTOINCREMENT,
+             account      TEXT NOT NULL,
+             account_type TEXT NOT NULL,   -- phone | email
+             code_hash    TEXT NOT NULL,
+             expires_at   TEXT NOT NULL,
+             used         INTEGER DEFAULT 0,
+             attempts     INTEGER DEFAULT 0,
+             created_at   TEXT DEFAULT (datetime('now'))
+           )"""
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_vcodes_account ON verification_codes(account)"
+    )
+    conn.commit()
+    conn.close()
 
 
 def migrate_auth():
@@ -115,6 +142,7 @@ def init_db():
 
 init_db()
 migrate_auth()
+migrate_verification()
 
 
 def allowed_file(filename):
@@ -235,6 +263,13 @@ def register():
     if conn.execute("SELECT id FROM users WHERE account = ?", (account,)).fetchone():
         conn.close()
         return jsonify({"ok": False, "message": "该账号已注册，请直接登录"}), 409
+    conn.close()
+
+    ok, msg = consume_code(account, data.get("code"))
+    if not ok:
+        return jsonify({"ok": False, "message": msg}), 400
+
+    conn = get_db()
     cur = conn.execute(
         "INSERT INTO users (account, account_type, password_hash, invite_code)"
         " VALUES (?, ?, ?, ?)",
@@ -269,6 +304,169 @@ def login():
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "token": token, "account": user["account"]})
+
+
+# ---------- 注册验证码（邮箱 / 短信） ----------
+
+CODE_TTL_MINUTES = 15
+CODE_RESEND_SECONDS = 60
+CODE_MAX_PER_HOUR = 10
+CODE_MAX_ATTEMPTS = 5
+
+
+def _utcnow():
+    return datetime.now(timezone.utc)
+
+
+def _fmt(dt):
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _parse(s):
+    # SQLite datetime('now') 与本模块存入的时间统一为 UTC 'YYYY-MM-DD HH:MM:SS'
+    return datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+
+
+def send_email_code(to_email, code):
+    """返回 (是否成功, 提示信息)。"""
+    host = os.environ.get("SMTP_HOST", "")
+    port = int(os.environ.get("SMTP_PORT", "587") or 587)
+    user = os.environ.get("SMTP_USER", "")
+    password = os.environ.get("SMTP_PASS", "")
+    sender = os.environ.get("SMTP_FROM", user)
+    if not (host and user and password):
+        return False, "邮件服务未配置"
+    try:
+        msg = EmailMessage()
+        msg["Subject"] = "抄经 · 注册验证码"
+        msg["From"] = sender
+        msg["To"] = to_email
+        msg.set_content(
+            f"您的注册验证码是 {code}，{CODE_TTL_MINUTES} 分钟内有效。请勿转发给他人。"
+        )
+        with smtplib.SMTP(host, port, timeout=15) as s:
+            s.starttls()
+            s.login(user, password)
+            s.send_message(msg)
+        return True, ""
+    except Exception as e:  # noqa: BLE001 — 错误透出给前端便于排查
+        return False, f"邮件发送失败：{e}"
+
+
+def send_sms_code(to_phone, code):
+    """Twilio 短信。返回 (是否成功, 提示信息)。"""
+    sid = os.environ.get("TWILIO_SID", "")
+    token = os.environ.get("TWILIO_TOKEN", "")
+    from_num = os.environ.get("TWILIO_FROM", "")
+    if not (sid and token and from_num):
+        return False, "短信服务未配置"
+    try:
+        body = urlencode(
+            {
+                "To": to_phone,
+                "From": from_num,
+                "Body": f"【抄经】您的注册验证码是 {code}，{CODE_TTL_MINUTES} 分钟内有效。",
+            }
+        ).encode()
+        req = Request(
+            f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json",
+            data=body,
+            headers={
+                "Authorization": "Basic "
+                + base64.b64encode(f"{sid}:{token}".encode()).decode()
+            },
+        )
+        with urlopen(req, timeout=15) as resp:
+            if resp.status not in (200, 201):
+                return False, f"短信发送失败（{resp.status}）"
+        return True, ""
+    except Exception as e:  # noqa: BLE001
+        return False, f"短信发送失败：{e}"
+
+
+@app.route("/api/auth/send-code", methods=["POST"])
+def auth_send_code():
+    data = request.get_json(silent=True) or {}
+    account_type = data.get("account_type")
+    valid, account = normalize_account(account_type, data.get("account"))
+    if not valid:
+        return jsonify({"ok": False, "message": "手机号或邮箱格式不正确"}), 400
+
+    conn = get_db()
+    # 顺手清理一天前的旧验证码
+    conn.execute(
+        "DELETE FROM verification_codes WHERE expires_at < ?",
+        (_fmt(_utcnow() - timedelta(days=1)),),
+    )
+    recent = conn.execute(
+        "SELECT created_at FROM verification_codes WHERE account = ?"
+        " ORDER BY id DESC LIMIT 1",
+        (account,),
+    ).fetchone()
+    if recent:
+        last = _parse(recent["created_at"])
+        if (_utcnow() - last).total_seconds() < CODE_RESEND_SECONDS:
+            conn.close()
+            return (
+                jsonify({"ok": False, "message": f"{CODE_RESEND_SECONDS} 秒后再试"}),
+                429,
+            )
+    hourly = conn.execute(
+        "SELECT COUNT(*) AS c FROM verification_codes"
+        " WHERE account = ? AND created_at > ?",
+        (account, _fmt(_utcnow() - timedelta(hours=1))),
+    ).fetchone()
+    if hourly["c"] >= CODE_MAX_PER_HOUR:
+        conn.close()
+        return jsonify({"ok": False, "message": "发送太频繁，请稍后再试"}), 429
+
+    code = "%06d" % secrets.randbelow(1000000)
+    expires_at = _fmt(_utcnow() + timedelta(minutes=CODE_TTL_MINUTES))
+    conn.execute(
+        "INSERT INTO verification_codes (account, account_type, code_hash, expires_at)"
+        " VALUES (?, ?, ?, ?)",
+        (account, account_type, generate_password_hash(code), expires_at),
+    )
+    conn.commit()
+    conn.close()
+
+    if account_type == "email":
+        ok, msg = send_email_code(account, code)
+    else:
+        ok, msg = send_sms_code(account, code)
+    if not ok:
+        return jsonify({"ok": False, "message": msg}), 502
+    return jsonify(
+        {"ok": True, "message": "验证码已发送", "ttl_minutes": CODE_TTL_MINUTES}
+    )
+
+
+def consume_code(account, code):
+    """校验并核销验证码。返回 (是否成功, 提示信息)。"""
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM verification_codes WHERE account = ? AND used = 0"
+        " ORDER BY id DESC LIMIT 1",
+        (account,),
+    ).fetchone()
+    if not row or _parse(row["expires_at"]) <= _utcnow():
+        conn.close()
+        return False, "验证码无效或已过期，请重新发送"
+    if row["attempts"] >= CODE_MAX_ATTEMPTS:
+        conn.close()
+        return False, "尝试次数过多，请重新发送"
+    if not check_password_hash(row["code_hash"], code or ""):
+        conn.execute(
+            "UPDATE verification_codes SET attempts = attempts + 1 WHERE id = ?",
+            (row["id"],),
+        )
+        conn.commit()
+        conn.close()
+        return False, "验证码不正确"
+    conn.execute("UPDATE verification_codes SET used = 1 WHERE id = ?", (row["id"],))
+    conn.commit()
+    conn.close()
+    return True, ""
 
 
 @app.route("/api/me")

@@ -23,6 +23,8 @@ services:
     environment:
       SUTRA_DB: /data/sutra.db
       SECRET_KEY: ${FLASK_SECRET_KEY:?必须在环境变量 FLASK_SECRET_KEY 中设置}
+    env_file:
+      - .env     # SMTP_* / TWILIO_* 等机密放这里，不进 git
     volumes:
       - sutra-data:/data              # SQLite 数据库持久化
       - sutra-uploads:/app/backend/uploads  # 用户上传的音视频图片持久化
