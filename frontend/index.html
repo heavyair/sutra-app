@@ -6,6 +6,8 @@
 <meta name="theme-color" content="#1a1611">
 <title>抄经 · 静心</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@600&display=swap">
 </head>
 <body>
 <div id="app">
@@ -33,53 +35,108 @@
     <ul id="sutra-list" class="sutra-list"></ul>
   </section>
 
-  <!-- 3. 读经 / 抄经页 -->
-  <section id="screen-copy" class="screen">
+  <!-- 3. 字体选择 -->
+  <section id="screen-font" class="screen">
     <header class="topbar">
-      <button id="btn-back-lib" class="btn-ghost">‹ 返回</button>
-      <h2 id="copy-title">经名</h2>
-      <button id="btn-music-toggle" class="btn-ghost" aria-label="音乐开关">♪</button>
+      <button id="btn-back-lib2" class="btn-ghost">‹ 返回</button>
+      <h2>选择字体</h2>
+      <span class="topbar-spacer"></span>
     </header>
-    <div class="brush-row">
-      <button class="chip brush active" data-brush="maobi">毛笔</button>
-      <button class="chip brush" data-brush="yingbi">硬笔</button>
-      <button class="chip brush" data-brush="bangshu">榜书</button>
-    </div>
-    <div id="trace-char" class="trace-char" title="当前临摹字">永</div>
-    <canvas id="writing-canvas"></canvas>
-    <div class="progress-row">
-      <div class="progress-track"><div id="progress-bar"></div></div>
-      <span id="progress-text">0%</span>
-    </div>
-    <div class="copy-actions">
-      <button id="btn-clear" class="btn-secondary">清空</button>
-      <button id="btn-next-char" class="btn-secondary">下一字 ›</button>
-      <button id="btn-like" class="btn-secondary">♥ <span id="like-count">0</span></button>
-      <button id="btn-share" class="btn-secondary">分享</button>
-      <button id="btn-comments" class="btn-primary">留言</button>
+    <p class="picker-hint">临摹字将以所选字体虚化显示</p>
+    <div id="font-cards" class="pick-cards"></div>
+    <div class="picker-foot">
+      <button id="btn-start-copy" class="btn-primary btn-big">开始抄经</button>
     </div>
   </section>
 
-  <!-- 4. 评论区 -->
-  <section id="screen-comments" class="screen">
-    <header class="topbar">
-      <button id="btn-back-copy" class="btn-ghost">‹ 返回</button>
-      <h2>留言</h2>
-    </header>
-    <ul id="comment-list" class="comment-list"></ul>
-    <div class="comment-form">
-      <textarea id="comment-input" rows="2" placeholder="写下你的感悟…"></textarea>
-      <div class="media-row">
-        <button id="btn-record-audio" class="btn-secondary">🎙 音频</button>
-        <button id="btn-pick-image" class="btn-secondary">🖼 图片</button>
-        <button id="btn-pick-video" class="btn-secondary">🎬 视频</button>
-        <button id="btn-send-comment" class="btn-primary">发送</button>
+  <!-- 4. 全屏抄写 -->
+  <section id="screen-write" class="screen">
+    <canvas id="paper-canvas"></canvas>
+    <canvas id="ink-canvas"></canvas>
+
+    <!-- 开场：经名 2 秒 / 段落慢读高亮 -->
+    <div id="intro-overlay" class="hidden">
+      <div id="intro-title"></div>
+      <div id="intro-para"></div>
+    </div>
+
+    <!-- 选笔（首次） -->
+    <div id="pen-picker" class="picker-overlay hidden">
+      <div class="picker-card">
+        <h3>选择笔</h3>
+        <div id="pen-cards" class="pick-cards"></div>
+        <button id="btn-pen-done" class="btn-primary btn-big">开始书写</button>
       </div>
-      <input id="file-input" type="file" hidden>
+    </div>
+
+    <!-- 换字体（工具内） -->
+    <div id="font-overlay" class="picker-overlay hidden">
+      <div class="picker-card">
+        <h3>选择字体</h3>
+        <div id="font-cards-2" class="pick-cards"></div>
+        <button id="btn-font-done" class="btn-primary btn-big">确定</button>
+      </div>
+    </div>
+
+    <!-- 左下角：工具 + 橡皮 -->
+    <div id="write-ui">
+      <button id="btn-tools" class="fab" aria-label="工具">☰</button>
+      <button id="btn-eraser" class="fab" aria-label="橡皮擦">🧽</button>
+    </div>
+
+    <!-- 工具菜单：散布全屏 -->
+    <div id="tools-menu" class="hidden">
+      <button class="tool-item" data-tool="sutra">经文</button>
+      <button class="tool-item" data-tool="font">字体</button>
+      <button class="tool-item" data-tool="pen">笔</button>
+      <button class="tool-item" data-tool="music">背景音</button>
+      <button class="tool-item" data-tool="view">欣赏</button>
+      <button class="tool-item" data-tool="share">分享</button>
+    </div>
+
+    <!-- 写完一字的过渡按钮 -->
+    <button id="btn-keep-editing" class="pill hidden">继续改写</button>
+    <button id="btn-force-next" class="pill hidden">写好了 →</button>
+
+    <!-- 全部写完 -->
+    <div id="done-overlay" class="picker-overlay hidden">
+      <div class="picker-card">
+        <div class="done-seal">🪷</div>
+        <h3>全部写完</h3>
+        <p id="done-summary" class="picker-hint"></p>
+        <div class="done-actions">
+          <button id="btn-done-view" class="btn-primary">欣赏作品</button>
+          <button id="btn-done-pdf" class="btn-secondary">生成 PDF</button>
+          <button id="btn-done-share" class="btn-secondary">分享</button>
+          <button id="btn-done-lib" class="btn-ghost">返回经文库</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. 欣赏作品 -->
+  <section id="screen-appreciate" class="screen">
+    <header class="topbar">
+      <button id="btn-back-write" class="btn-ghost">‹ 返回</button>
+      <h2>欣赏</h2>
+      <span class="topbar-spacer"></span>
+    </header>
+    <div id="work-head">
+      <h3 id="work-title"></h3>
+      <p id="work-meta"></p>
+    </div>
+    <div id="work-sheet"></div>
+    <div class="picker-foot">
+      <button id="btn-work-pdf" class="btn-primary">生成 PDF</button>
+      <button id="btn-work-share" class="btn-secondary">分享</button>
     </div>
   </section>
 
 </div>
+
+<!-- 打印专用：屏幕上隐藏，打印时显示 -->
+<div id="print-sheet"></div>
+
 <script src="music.js"></script>
 <script src="writing.js"></script>
 <script src="app.js"></script>

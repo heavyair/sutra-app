@@ -1,93 +1,290 @@
-/* 抄经应用 · 手指书写画布（无外部依赖）
+/* 抄经应用 · 全屏手指书写（无外部依赖）
  *
- * WritingPad(canvas, opts)
- *   opts.onStrokeEnd(strokeCount)  每完成一笔时的回调
- *   setBrush('maobi' | 'yingbi' | 'bangshu')
- *   setTraceChar(ch)   设置当前临摹字（占位：显示用）
- *   clear()            清空画布
+ * WritingPad(paperCanvas, inkCanvas, opts)
+ *   opts.onStrokeEnd(coverage, strokeCount)  每笔结束回调
+ *   opts.onFirstStroke()                     第一笔回调
  *
- * 笔触：
- *   毛笔：线宽随运笔速度变化（慢粗快细），模拟提按
- *   硬笔：恒定细线
- *   榜书：恒定粗线
+ *   setPen('pencil' | 'maobi' | 'gangbi')
+ *   setFont(fontStack)         设置临摹字字体
+ *   newChar(ch)                开始一个新字：画纸面 + 虚影字 + 重置检测网格
+ *   clearInk()                 清空墨迹（橡皮），保留虚影字
+ *   coverage()                 当前墨迹覆盖虚影字的比例 0~1
+ *   fadeOut(ms)                缓缓隐藏墨迹（可被 cancelFade 中断）
+ *   cancelFade()               中断隐藏，恢复墨迹
+ *   snapshot()                 导出当前字的成品图（dataURL，已裁剪）
+ *
+ * 笔：
+ *   铅笔：恒定细灰线
+ *   毛笔：线宽随运笔速度变化（慢粗快细）
+ *   钢笔：恒定适中深色线
+ *
+ * 完成检测：虚影字像素 → 48×48 占用网格；墨迹落入的格子 / 字的格子 ≥ 阈值即判为写成。
  */
 (function (global) {
   'use strict';
 
-  function WritingPad(canvas, opts) {
-    this.canvas = canvas;
+  var GRID = 48;
+
+  var PENS = {
+    pencil: { width: 2.4, color: '#5a5a5a' },
+    gangbi: { width: 5, color: '#23232e' },
+    maobi: { color: '#2b2118' }, // 线宽动态
+  };
+
+  function WritingPad(paperCanvas, inkCanvas, opts) {
+    this.paper = paperCanvas;
+    this.ink = inkCanvas;
     this.opts = opts || {};
-    this.brush = 'maobi';
+    this.pen = 'pencil';
+    this.fontStack = 'serif';
+    this.pctx = paperCanvas.getContext('2d');
+    this.ictx = inkCanvas.getContext('2d');
     this.drawing = false;
     this.points = [];
     this.strokeCount = 0;
-    this.ctx = canvas.getContext('2d');
+    this.inkLength = 0;
+    this.charCells = null; // Uint8Array(GRID*GRID)：字占用的格
+    this.inkCells = null;  // Uint8Array(GRID*GRID)：墨迹落入的格
+    this.charCellCount = 0;
+    this.bbox = null;      // 虚影字包围盒（CSS px）
+    this.charPx = 0;       // 字号（CSS px）
+    this.fading = false;
+    this.fadeRaf = 0;
     this._resize();
     this._bind();
   }
 
+  WritingPad.prototype._sizeOf = function (canvas) {
+    var r = canvas.getBoundingClientRect();
+    return { w: Math.max(1, r.width), h: Math.max(1, r.height) };
+  };
+
   WritingPad.prototype._resize = function () {
-    var r = this.canvas.getBoundingClientRect();
-    var dpr = global.devicePixelRatio || 1;
-    this.canvas.width = Math.max(1, Math.round(r.width * dpr));
-    this.canvas.height = Math.max(1, Math.round(r.height * dpr));
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.ctx.lineCap = 'round';
-    this.ctx.lineJoin = 'round';
+    var self = this;
+    [this.paper, this.ink].forEach(function (c) {
+      var s = self._sizeOf(c);
+      var dpr = global.devicePixelRatio || 1;
+      c.width = Math.max(1, Math.round(s.w * dpr));
+      c.height = Math.max(1, Math.round(s.h * dpr));
+      c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+    });
+    this.pctx.lineCap = this.pctx.lineJoin = 'round';
+    this.ictx.lineCap = this.ictx.lineJoin = 'round';
+    if (this._char) this._drawPaper();
   };
 
-  WritingPad.prototype.setBrush = function (name) {
-    if (['maobi', 'yingbi', 'bangshu'].indexOf(name) >= 0) this.brush = name;
+  WritingPad.prototype.setPen = function (name) {
+    if (PENS[name]) this.pen = name;
   };
 
-  // 按笔触 + 速度计算线宽（速度单位：px/ms）
-  WritingPad.prototype._widthFor = function (speed) {
-    if (this.brush === 'yingbi') return 2.5;
-    if (this.brush === 'bangshu') return 16;
-    // 毛笔：慢→粗（最大 18），快→细（最小 3）
-    var w = 18 - Math.min(15, speed * 60);
-    return Math.max(3, w);
+  WritingPad.prototype.setFont = function (stack) {
+    this.fontStack = stack || 'serif';
+    if (this._char) this._drawPaper();
   };
 
+  /* ---------- 纸面：宣纸底 + 虚影字 ---------- */
+  WritingPad.prototype._drawPaper = function () {
+    var s = this._sizeOf(this.paper);
+    var ctx = this.pctx;
+    ctx.clearRect(0, 0, s.w, s.h);
+    // 宣纸底色 + 细微纹理
+    var g = ctx.createLinearGradient(0, 0, 0, s.h);
+    g.addColorStop(0, '#f4eddc');
+    g.addColorStop(1, '#efe5cf');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, s.w, s.h);
+
+    if (!this._char) return;
+    var px = Math.min(s.w, s.h) * 0.52;
+    this.charPx = px;
+    var cx = s.w / 2, cy = s.h * 0.44;
+    ctx.font = px + 'px ' + this.fontStack;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(140,115,70,0.30)';
+    ctx.fillText(this._char, cx, cy);
+    this._computeGrid(s, px, cx, cy);
+  };
+
+  // 在离屏画布上渲染虚影字，扫描像素得到包围盒与占用网格
+  WritingPad.prototype._computeGrid = function (s, px, cx, cy) {
+    var off = document.createElement('canvas');
+    off.width = Math.max(1, Math.round(s.w));
+    off.height = Math.max(1, Math.round(s.h));
+    var c = off.getContext('2d', { willReadFrequently: true });
+    c.font = px + 'px ' + this.fontStack;
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillStyle = '#000';
+    c.fillText(this._char, cx, cy);
+    var img;
+    try {
+      img = c.getImageData(0, 0, off.width, off.height);
+    } catch (e) {
+      this.bbox = { x: cx - px / 2, y: cy - px / 2, w: px, h: px };
+      this._fallbackGrid();
+      return;
+    }
+    var d = img.data, W = off.width, H = off.height;
+    var minX = W, minY = H, maxX = -1, maxY = -1;
+    for (var y = 0; y < H; y += 2) {
+      for (var x = 0; x < W; x += 2) {
+        if (d[(y * W + x) * 4 + 3] > 40) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (maxX < 0) { this._fallbackGrid(); return; }
+    // CSS px 坐标（off 与 CSS 1:1）
+    this.bbox = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+    this.charCells = new Uint8Array(GRID * GRID);
+    this.charCellCount = 0;
+    // 每格内 3×3 子采样：任一子点有墨即算字区（细笔画不漏检）
+    for (var gy = 0; gy < GRID; gy++) {
+      for (var gx = 0; gx < GRID; gx++) {
+        var hit = false;
+        for (var qy = 0; qy < 3 && !hit; qy++) {
+          for (var qx = 0; qx < 3 && !hit; qx++) {
+            var sx = Math.min(W - 1, Math.round(minX + (maxX - minX + 1) * (gx + (qx + 0.5) / 3) / GRID));
+            var sy = Math.min(H - 1, Math.round(minY + (maxY - minY + 1) * (gy + (qy + 0.5) / 3) / GRID));
+            if (d[(sy * W + sx) * 4 + 3] > 40) hit = true;
+          }
+        }
+        if (hit) {
+          this.charCells[gy * GRID + gx] = 1;
+          this.charCellCount++;
+        }
+      }
+    }
+    if (this.charCellCount === 0) this._fallbackGrid();
+  };
+
+  WritingPad.prototype._fallbackGrid = function () {
+    // 扫描失败时：以字号正方形为包围盒，全格视为字区
+    var s = this._sizeOf(this.paper);
+    var px = this.charPx || Math.min(s.w, s.h) * 0.52;
+    this.bbox = { x: s.w / 2 - px / 2, y: s.h * 0.44 - px / 2, w: px, h: px };
+    this.charCells = new Uint8Array(GRID * GRID).fill(1);
+    this.charCellCount = GRID * GRID;
+  };
+
+  /* ---------- 新字 / 清空 ---------- */
+  WritingPad.prototype.newChar = function (ch) {
+    this._char = ch || '　';
+    this.cancelFade();
+    this.ink.style.opacity = '1';
+    this.clearInk();
+    this._drawPaper();
+  };
+
+  WritingPad.prototype.clearInk = function () {
+    var s = this._sizeOf(this.ink);
+    this.ictx.clearRect(0, 0, s.w, s.h);
+    this.inkCells = new Uint8Array(GRID * GRID);
+    this.strokeCount = 0;
+    this.inkLength = 0;
+    this.drawing = false;
+    this.ink.style.opacity = '1';
+  };
+
+  /* ---------- 书写 ---------- */
   WritingPad.prototype._pos = function (e) {
-    var r = this.canvas.getBoundingClientRect();
+    var r = this.ink.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top, t: Date.now() };
+  };
+
+  WritingPad.prototype._widthFor = function (speed) {
+    if (this.pen === 'pencil') return PENS.pencil.width;
+    if (this.pen === 'gangbi') return PENS.gangbi.width;
+    // 毛笔：慢→粗（最大 20），快→细（最小 3.5）
+    return Math.max(3.5, 20 - Math.min(16.5, speed * 70));
+  };
+
+  WritingPad.prototype._colorFor = function () {
+    return PENS[this.pen].color;
+  };
+
+  WritingPad.prototype._markCells = function (a, b, lineWidth) {
+    if (!this.bbox || !this.charCells) return;
+    // 按笔宽半径标记：细笔也不吃亏，胡乱涂抹仍难达标
+    var cellW = this.bbox.w / GRID, cellH = this.bbox.h / GRID;
+    var cellMin = Math.min(cellW, cellH);
+    var r = Math.max((lineWidth || 3) / 2, cellMin * 0.6);
+    var dx = b.x - a.x, dy = b.y - a.y;
+    var dist = Math.hypot(dx, dy);
+    var steps = Math.max(1, Math.ceil(dist / 3));
+    for (var i = 0; i <= steps; i++) {
+      var x = a.x + dx * i / steps, y = a.y + dy * i / steps;
+      var gx0 = Math.floor((x - r - this.bbox.x) / cellW);
+      var gx1 = Math.floor((x + r - this.bbox.x) / cellW);
+      var gy0 = Math.floor((y - r - this.bbox.y) / cellH);
+      var gy1 = Math.floor((y + r - this.bbox.y) / cellH);
+      for (var gy = gy0; gy <= gy1; gy++) {
+        for (var gx = gx0; gx <= gx1; gx++) {
+          if (gx < 0 || gx >= GRID || gy < 0 || gy >= GRID) continue;
+          var cxp = this.bbox.x + (gx + 0.5) * cellW;
+          var cyp = this.bbox.y + (gy + 0.5) * cellH;
+          if (Math.hypot(cxp - x, cyp - y) <= r + cellMin * 0.5) {
+            this.inkCells[gy * GRID + gx] = 1;
+          }
+        }
+      }
+    }
+  };
+
+  WritingPad.prototype.coverage = function () {
+    if (!this.charCellCount) return 0;
+    var hit = 0;
+    for (var i = 0; i < this.charCells.length; i++) {
+      if (this.charCells[i] && this.inkCells[i]) hit++;
+    }
+    return hit / this.charCellCount;
   };
 
   WritingPad.prototype._bind = function () {
     var self = this;
-    this.canvas.addEventListener('pointerdown', function (e) {
+    this.ink.addEventListener('pointerdown', function (e) {
       e.preventDefault();
+      if (self.fading) return;
       self.drawing = true;
       self.points = [self._pos(e)];
-      self.canvas.setPointerCapture(e.pointerId);
+      try { self.ink.setPointerCapture(e.pointerId); } catch (err) {}
+      if (self.strokeCount === 0 && self.opts.onFirstStroke) self.opts.onFirstStroke();
     });
-    this.canvas.addEventListener('pointermove', function (e) {
-      if (!self.drawing) return;
+    this.ink.addEventListener('pointermove', function (e) {
+      if (!self.drawing || self.fading) return;
       e.preventDefault();
       var p = self._pos(e);
       var last = self.points[self.points.length - 1];
       self.points.push(p);
-      self._drawSegment(last, p);
+      var dt = Math.max(1, p.t - last.t);
+      var speed = Math.hypot(p.x - last.x, p.y - last.y) / dt;
+      var w = self._widthFor(speed);
+      self.inkLength += Math.hypot(p.x - last.x, p.y - last.y);
+      self._drawSegment(last, p, w);
+      self._markCells(last, p, w);
     });
-    function end(e) {
+    function end() {
       if (!self.drawing) return;
       self.drawing = false;
       self.strokeCount++;
-      if (self.opts.onStrokeEnd) self.opts.onStrokeEnd(self.strokeCount);
+      if (self.opts.onStrokeEnd) self.opts.onStrokeEnd(self.coverage(), self.strokeCount);
     }
-    this.canvas.addEventListener('pointerup', end);
-    this.canvas.addEventListener('pointercancel', end);
-    global.addEventListener('resize', function () { self._resize(); });
+    this.ink.addEventListener('pointerup', end);
+    this.ink.addEventListener('pointercancel', end);
+    var rt;
+    global.addEventListener('resize', function () {
+      clearTimeout(rt);
+      rt = setTimeout(function () { self._resize(); }, 200);
+    });
   };
 
-  WritingPad.prototype._drawSegment = function (a, b) {
-    var dt = Math.max(1, b.t - a.t);
-    var dist = Math.hypot(b.x - a.x, b.y - a.y);
-    var speed = dist / dt;
-    var w = this._widthFor(speed);
-    var ctx = this.ctx;
-    ctx.strokeStyle = '#2b2118';
+  WritingPad.prototype._drawSegment = function (a, b, w) {
+    var ctx = this.ictx;
+    ctx.strokeStyle = this._colorFor();
     ctx.lineWidth = w;
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
@@ -95,14 +292,52 @@
     ctx.stroke();
   };
 
-  WritingPad.prototype.clear = function () {
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+  /* ---------- 缓缓隐藏 / 继续改写 ---------- */
+  WritingPad.prototype.fadeOut = function (ms, done) {
+    var self = this;
+    this.cancelFade();
+    this.fading = true;
+    this.ink.style.transition = 'opacity ' + ms + 'ms ease';
+    this.ink.style.opacity = '0';
+    this._fadeTimer = setTimeout(function () {
+      self.fading = false;
+      self.ink.style.transition = '';
+      if (done) done();
+    }, ms + 60);
   };
 
-  // 当前临摹字：占位实现（显示在 #trace-char 元素中，由 app.js 推进）
-  WritingPad.prototype.setTraceChar = function (ch) {
-    var el = document.getElementById('trace-char');
-    if (el) el.textContent = ch || '　';
+  WritingPad.prototype.cancelFade = function () {
+    if (this._fadeTimer) clearTimeout(this._fadeTimer);
+    this._fadeTimer = 0;
+    this.fading = false;
+    if (this.ink) {
+      this.ink.style.transition = '';
+      this.ink.style.opacity = '1';
+    }
+    if (this.fadeRaf) cancelAnimationFrame(this.fadeRaf);
+  };
+
+  /* ---------- 导出成品（裁剪到字区） ---------- */
+  WritingPad.prototype.snapshot = function () {
+    var dpr = global.devicePixelRatio || 1;
+    var tmp = document.createElement('canvas');
+    var b = this.bbox;
+    var pad = Math.max(b.w, b.h) * 0.25;
+    var x = Math.max(0, b.x - pad), y = Math.max(0, b.y - pad);
+    var w = Math.min(this.paper.width / dpr - x, b.w + pad * 2);
+    var h = Math.min(this.paper.height / dpr - y, b.h + pad * 2);
+    var outW = 360, outH = Math.round(360 * h / w);
+    tmp.width = outW;
+    tmp.height = outH;
+    var c = tmp.getContext('2d');
+    c.fillStyle = '#f4eddc';
+    c.fillRect(0, 0, outW, outH);
+    c.drawImage(this.ink, x * dpr, y * dpr, w * dpr, h * dpr, 0, 0, outW, outH);
+    try {
+      return tmp.toDataURL('image/png');
+    } catch (e) {
+      return '';
+    }
   };
 
   global.WritingPad = WritingPad;
