@@ -42,6 +42,7 @@
     completing: false,
     pauses: [],        // 笔画间停顿时长（ms），用于学习书写节奏
     pendingTimer: 0,   // 完成判定的延迟计时器
+    punctTimer: 0,     // 标点自动跳过的展示计时器
     lastStrokeEnd: 0,  // 上一笔抬起的时间戳
   };
 
@@ -74,7 +75,12 @@
 
   function cancelPendingComplete() {
     if (state.pendingTimer) { clearTimeout(state.pendingTimer); state.pendingTimer = 0; }
+    if (state.punctTimer) { clearTimeout(state.punctTimer); state.punctTimer = 0; }
   }
+
+  // 中日韩及常用 ASCII 标点：只展示1秒自动跳过，不用手写
+  var PUNCT_RE = /[　-〿！-／：-＠［-｀｛-･\u2000-\u206F\u2E00-\u2E7F.,;:?!'"()\[\]{}…—–·•‹›«»\-/]/;
+  function isPunct(ch) { return PUNCT_RE.test(ch); }
 
   // 手指离开后不立刻判完成：等一等，若用户继续落笔则取消
   function scheduleComplete() {
@@ -527,6 +533,16 @@
       if (called) return;
       called = true;
       pad.newChar(ch);
+      if (isPunct(ch)) {
+        // 标点：盖印展示1秒，自动跳过，不用手写
+        pad.stampChar(ch);
+        var token = state.flowToken;
+        state.punctTimer = setTimeout(function () {
+          state.punctTimer = 0;
+          if (token !== state.flowToken || state.completing) return;
+          punctAdvance();
+        }, 1000);
+      }
     };
     try {
       if (document.fonts && document.fonts.load) {
@@ -536,6 +552,21 @@
       }
     } catch (e) {}
     done();
+  }
+
+  // 标点展示1秒后：收录盖印成品，直接进下一字
+  function punctAdvance() {
+    if (state.completing) return;
+    cancelPendingComplete();
+    var img = pad.snapshot();
+    if (img) state.workImages.push(img);
+    updateProgress();
+    state.charIndex++;
+    if (state.charIndex >= state.chars.length) {
+      showDone();
+    } else {
+      beginChar();
+    }
   }
 
   function charComplete() {
@@ -578,6 +609,7 @@
   // 橡皮：一下清空重写（若在"缓缓隐藏"中点橡皮，视同继续改写）
   $('btn-eraser').addEventListener('click', function () {
     if (!pad) return;
+    var wasPunct = !!state.punctTimer; // 标点展示中被橡皮打断
     cancelPendingComplete();
     if (state.completing) {
       state.completing = false;
@@ -588,6 +620,7 @@
     pad.clearInk();
     $('btn-keep-editing').classList.add('hidden');
     $('btn-force-next').classList.add('hidden');
+    if (wasPunct) beginChar(); // 重新展示该标点
   });
 
   function updateProgress() {

@@ -438,4 +438,17 @@
   };
 
   global.WritingPad = WritingPad;
+
+  // 把当前字（自动跳过的标点）以墨色盖印到墨层，成品依然完整
+  WritingPad.prototype.stampChar = function (ch) {
+    var s = this._sizeOf(this.ink);
+    var ctx = this.ictx;
+    ctx.save();
+    ctx.fillStyle = (PENS[this.pen] && PENS[this.pen].color) || '#2b2118';
+    ctx.font = (this.charPx || Math.min(s.w, s.h) * 0.52) + 'px ' + this.fontStack;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(ch, s.w / 2, s.h * 0.44);
+    ctx.restore();
+  };
 })(window);
