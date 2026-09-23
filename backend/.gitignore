@@ -1,0 +1,7 @@
+# 上传文件与本地数据库不入库
+uploads/*
+!uploads/.gitkeep
+*.db
+__pycache__/
+*.pyc
+venv/

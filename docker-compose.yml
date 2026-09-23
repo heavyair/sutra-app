@@ -1,0 +1,35 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: sutra-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
+    depends_on:
+      - sutra
+
+  sutra:
+    build: .
+    image: sutra-app:latest
+    container_name: sutra-app
+    expose:
+      - "5000"   # 仅内网，HTTPS 统一走 caddy
+    environment:
+      SUTRA_DB: /data/sutra.db
+      SECRET_KEY: ${FLASK_SECRET_KEY:?必须在环境变量 FLASK_SECRET_KEY 中设置}
+    volumes:
+      - sutra-data:/data              # SQLite 数据库持久化
+      - sutra-uploads:/app/backend/uploads  # 用户上传的音视频图片持久化
+    restart: unless-stopped
+
+volumes:
+  sutra-data:
+  sutra-uploads:
+  caddy-data:
+  caddy-config:

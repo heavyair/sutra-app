@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1a1611">
+<title>抄经 · 静心</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- 1. 推荐码进入页 -->
+  <section id="screen-invite" class="screen active">
+    <div class="invite-card">
+      <div class="invite-seal">🪷</div>
+      <h1>抄经</h1>
+      <p class="subtitle">一笔一划 · 安心静虑</p>
+      <input id="invite-code" type="text" placeholder="请输入推荐码" autocomplete="off" autocapitalize="characters">
+      <button id="btn-verify" class="btn-primary">进入</button>
+      <p id="invite-msg" class="msg"></p>
+    </div>
+  </section>
+
+  <!-- 2. 经文库列表 -->
+  <section id="screen-library" class="screen">
+    <header class="topbar"><h2>经文库</h2></header>
+    <div class="filter-row">
+      <button class="chip active" data-trad="all">全部</button>
+      <button class="chip" data-trad="buddhist">佛经</button>
+      <button class="chip" data-trad="taoist">道经</button>
+    </div>
+    <ul id="sutra-list" class="sutra-list"></ul>
+  </section>
+
+  <!-- 3. 读经 / 抄经页 -->
+  <section id="screen-copy" class="screen">
+    <header class="topbar">
+      <button id="btn-back-lib" class="btn-ghost">‹ 返回</button>
+      <h2 id="copy-title">经名</h2>
+      <button id="btn-music-toggle" class="btn-ghost" aria-label="音乐开关">♪</button>
+    </header>
+    <div class="brush-row">
+      <button class="chip brush active" data-brush="maobi">毛笔</button>
+      <button class="chip brush" data-brush="yingbi">硬笔</button>
+      <button class="chip brush" data-brush="bangshu">榜书</button>
+    </div>
+    <div id="trace-char" class="trace-char" title="当前临摹字">永</div>
+    <canvas id="writing-canvas"></canvas>
+    <div class="progress-row">
+      <div class="progress-track"><div id="progress-bar"></div></div>
+      <span id="progress-text">0%</span>
+    </div>
+    <div class="copy-actions">
+      <button id="btn-clear" class="btn-secondary">清空</button>
+      <button id="btn-next-char" class="btn-secondary">下一字 ›</button>
+      <button id="btn-like" class="btn-secondary">♥ <span id="like-count">0</span></button>
+      <button id="btn-share" class="btn-secondary">分享</button>
+      <button id="btn-comments" class="btn-primary">留言</button>
+    </div>
+  </section>
+
+  <!-- 4. 评论区 -->
+  <section id="screen-comments" class="screen">
+    <header class="topbar">
+      <button id="btn-back-copy" class="btn-ghost">‹ 返回</button>
+      <h2>留言</h2>
+    </header>
+    <ul id="comment-list" class="comment-list"></ul>
+    <div class="comment-form">
+      <textarea id="comment-input" rows="2" placeholder="写下你的感悟…"></textarea>
+      <div class="media-row">
+        <button id="btn-record-audio" class="btn-secondary">🎙 音频</button>
+        <button id="btn-pick-image" class="btn-secondary">🖼 图片</button>
+        <button id="btn-pick-video" class="btn-secondary">🎬 视频</button>
+        <button id="btn-send-comment" class="btn-primary">发送</button>
+      </div>
+      <input id="file-input" type="file" hidden>
+    </div>
+  </section>
+
+</div>
+<script src="music.js"></script>
+<script src="writing.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

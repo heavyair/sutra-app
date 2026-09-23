@@ -1,0 +1,12 @@
+# 抄经应用 HTTPS 入口（Caddy 反向代理，自签名证书）
+# 证书: ./certs/scri.arcai.com.crt / .key（自签名，浏览器会提示不安全，属预期）
+
+scri.arcai.com {
+    tls /certs/scri.arcai.com.crt /certs/scri.arcai.com.key
+    reverse_proxy sutra:5000
+}
+
+# 保留 IP 直接访问（HTTP），旧书签不失效
+http://172.105.4.66 {
+    reverse_proxy sutra:5000
+}

@@ -1,0 +1,7 @@
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/sutra.db
+**/__pycache__/
+**/*.pyc
+.git/
