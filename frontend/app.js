@@ -255,7 +255,17 @@
           '<div class="sutra-title">' + escapeHtml(s.title) + todo + '</div>' +
           '<div class="sutra-meta">' + trad + ' · ' + s.char_count + '字 · ♥ ' + s.like_count + '</div>' +
           '<div class="sutra-intro">' + escapeHtml(s.intro || '') + '</div>';
-        li.addEventListener('click', function () { openSutra(s.id); });
+        li.addEventListener('click', function () {
+          if (li.dataset.busy) return;           // 防重复点击
+          li.dataset.busy = '1';
+          var meta = li.querySelector('.sutra-meta');
+          var oldMeta = meta.textContent;
+          meta.textContent = '加载中…';
+          openSutra(s.id, function () {
+            delete li.dataset.busy;
+            meta.textContent = oldMeta;
+          });
+        });
         list.appendChild(li);
       });
   }
@@ -270,9 +280,10 @@
   });
 
   /* ---------- 4. 选经文 → 选字体 ---------- */
-  function openSutra(id) {
+  function openSutra(id, done) {
     api('/api/sutra/' + encodeURIComponent(id)).then(function (res) {
-      if (!res.ok) return;
+      if (done) done();
+      if (!res.ok) { alert(res.message || '加载失败，请重试'); return; }
       var chars = (res.sutra.full_text || '').replace(/\s+/g, '').split('');
       if (!chars.length) {
         alert('《' + res.sutra.title + '》全文待补充，敬请期待');
@@ -287,6 +298,9 @@
       renderFontCards($('font-cards'), state.font.id, function (f) { state.font = f; });
       music.setConfig(res.sutra.music_config || {});
       showScreen('screen-font');
+    }).catch(function () {
+      if (done) done();
+      alert('网络错误，请重试');
     });
   }
 
