@@ -50,6 +50,14 @@
     this.charPx = 0;       // 字号（CSS px）
     this.fading = false;
     this.fadeRaf = 0;
+    // 毛笔笔锋随字号自动缩放（newChar 时按虚影字包围盒校准）
+    this._brushMax = 34;
+    this._brushMin = 6;
+    // 落笔状态：死区 + 起笔收锋，避免落笔一团墨
+    this._inking = false;
+    this._strokeDist = 0;
+    this._downX = 0;
+    this._downY = 0;
     this._resize();
     this._bind();
   }
@@ -178,6 +186,8 @@
     this.ink.style.opacity = '1';
     this.clearInk();
     this._drawPaper();
+    // 按当前虚影字的实际显示大小校准毛笔笔锋
+    if (this.bbox) this._setBrushScale(Math.max(this.bbox.w, this.bbox.h));
   };
 
   WritingPad.prototype.clearInk = function () {
@@ -199,8 +209,16 @@
   WritingPad.prototype._widthFor = function (speed) {
     if (this.pen === 'pencil') return PENS.pencil.width;
     if (this.pen === 'gangbi') return PENS.gangbi.width;
-    // 毛笔：慢→浓粗（最大 34），快→细（最小 6）；中速依然饱满，不再一快就只剩细线
-    return Math.max(6, 34 - Math.min(28, speed * 55));
+    // 毛笔：慢→浓粗（_brushMax，随字号自动定），快→细（_brushMin）
+    var range = this._brushMax - this._brushMin;
+    return Math.max(this._brushMin, this._brushMax - Math.min(range, speed * range / 0.51));
+  };
+
+  // 按当前虚影字大小校准笔锋：最大锋宽 ≈ 字宽的 12%，最小 ≈ 2.5%
+  WritingPad.prototype._setBrushScale = function (charW) {
+    if (!charW || charW <= 0) return;
+    this._brushMax = Math.max(14, Math.min(46, charW * 0.12));
+    this._brushMin = Math.max(3, Math.min(8, charW * 0.025));
   };
 
   WritingPad.prototype._colorFor = function () {
@@ -253,7 +271,12 @@
       self._smoothSpeed = null; // 每笔重新平滑测速
       self._bristlePhase = Math.random() * Math.PI * 2; // 每笔毛丝走向不同
       self._bristleDist = 0;
-      self.points = [self._pos(e)];
+      self._inking = false;   // 落笔死区：未行笔前不出墨
+      self._strokeDist = 0;
+      var dp = self._pos(e);
+      self._downX = dp.x;
+      self._downY = dp.y;
+      self.points = [dp];
       try { self.ink.setPointerCapture(e.pointerId); } catch (err) {}
       if (self.opts.onStrokeStart) self.opts.onStrokeStart();
       if (self.strokeCount === 0 && self.opts.onFirstStroke) self.opts.onFirstStroke();
@@ -264,13 +287,25 @@
       var p = self._pos(e);
       var last = self.points[self.points.length - 1];
       self.points.push(p);
+      var segLen = Math.hypot(p.x - last.x, p.y - last.y);
+      self._strokeDist += segLen;
+      // 落笔死区（仅毛笔）：手指离开落笔点 4px 后才出墨，点按不留一团墨
+      if (self.pen === 'maobi' && !self._inking) {
+        if (Math.hypot(p.x - self._downX, p.y - self._downY) <= 4) return;
+        self._inking = true;
+      }
       var dt = Math.max(1, p.t - last.t);
       // 瞬时速度做上限裁剪 + 指数滑动平均：事件批量到达或时间戳抖动时笔锋不突变
-      var rawSpeed = Math.min(4, Math.hypot(p.x - last.x, p.y - last.y) / dt);
+      var rawSpeed = Math.min(4, segLen / dt);
       if (self._smoothSpeed == null) self._smoothSpeed = rawSpeed;
       else self._smoothSpeed += (rawSpeed - self._smoothSpeed) * 0.35;
       var w = self._widthFor(self._smoothSpeed);
-      self.inkLength += Math.hypot(p.x - last.x, p.y - last.y);
+      if (self.pen === 'maobi') {
+        // 起笔收锋：行程前 28px 内笔锋由 40% 渐放到全宽
+        var taperIn = Math.min(1, self._strokeDist / 28);
+        w = self._brushMin + (w - self._brushMin) * (0.4 + 0.6 * taperIn);
+      }
+      self.inkLength += segLen;
       self._drawSegment(last, p, w);
       self._markCells(last, p, w);
     });
