@@ -45,6 +45,12 @@
     pauses: [],        // 笔画间停顿时长（ms），用于学习书写节奏
     pendingTimer: 0,   // 完成判定的延迟计时器
     lastStrokeEnd: 0,  // 上一笔抬起的时间戳
+    pace: 'slow',      // 书写节奏：'fast' 疾书 / 'slow' 缓慢（初始视为静）
+    paceHist: [],      // 最近 3 个字的单字周期（书写时长+字前等待），用于判断加速/减速
+    charT0: 0,         // 当前字第一笔落笔时间
+    charGap: 0,        // 当前字开始前等待了多久（上一字结束→本字第一笔）
+    lastCharEnd: 0,    // 上一字完成的时间戳
+    pacePushedFor: -1, // 已计入 paceHist 的字序号（防"继续改写"重复计入）
   };
 
   var music = new MusicEngine();
@@ -73,6 +79,38 @@
     var med = s[Math.floor(s.length / 2)];
     return Math.min(2800, Math.max(900, Math.round(med * 2 + 300)));
   }
+
+  // 书写节奏：看最近 3 个字的单字周期（书写时长 + 字前等待）
+  // 连续变短 → 加速 → fast；连续变长 → 减速 → slow；否则保持（天然迟滞）
+  function pushPaceSample() {
+    if (state.pacePushedFor === state.charIndex) return;
+    state.pacePushedFor = state.charIndex;
+    var now = Date.now();
+    var writeMs = state.charT0 ? Math.max(300, now - state.charT0) : 2000;
+    var gapMs = Math.max(0, state.charGap || 0);
+    var h = state.paceHist;
+    h.push(writeMs + gapMs);
+    if (h.length > 3) h.shift();
+    if (h.length < 3) return;
+    var a = h[0], b = h[1], c = h[2], e = 0.06; // 6% 容差，防抖动误判
+    if (c < b * (1 - e) && b < a * (1 - e)) setPace('fast');
+    else if (c > b * (1 + e) && b > a * (1 + e)) setPace('slow');
+  }
+
+  function setPace(p) {
+    if (state.pace === p) return;
+    state.pace = p;
+    try { music.setActivity(p === 'fast' ? 1 : 0); } catch (err) {}
+  }
+
+  // 长时间停笔（>12s）→ 直接视为慢（自然声浮现），不等下一字写完
+  setInterval(function () {
+    try {
+      if (!$('screen-write').classList.contains('active')) return;
+      if (state.completing) return;
+      if (state.lastStrokeEnd && Date.now() - state.lastStrokeEnd > 12000) setPace('slow');
+    } catch (e) {}
+  }, 5000);
 
   function cancelPendingComplete() {
     if (state.pendingTimer) { clearTimeout(state.pendingTimer); state.pendingTimer = 0; }
@@ -420,6 +458,14 @@
     closeTools();
     hideOverlays();
     ensurePad();
+    // 新开书写：节奏复位为慢（自然声开着，入静氛围）
+    state.pace = 'slow';
+    state.paceHist = [];
+    state.charT0 = 0;
+    state.charGap = 0;
+    state.lastCharEnd = 0;
+    state.pacePushedFor = -1;
+    try { music.setActivity(0); } catch (e) {}
     pad.setFont(state.font.stack);
     pad.setPen(state.pen.id);
 
@@ -567,6 +613,12 @@
           $('btn-force-next').classList.remove('hidden');
         }
       },
+      onFirstStroke: function () {
+        // 本字第一笔：记录书写起点与字前等待（上一字结束→本字第一笔）
+        var now = Date.now();
+        state.charT0 = now;
+        state.charGap = state.lastCharEnd ? now - state.lastCharEnd : 0;
+      },
     });
     // 长按不弹出菜单
     $('screen-write').addEventListener('contextmenu', function (e) { e.preventDefault(); });
@@ -576,6 +628,9 @@
     state.completing = false;
     cancelPendingComplete();
     state.lastStrokeEnd = 0;
+    state.charT0 = 0;
+    state.charGap = 0;
+    state.pacePushedFor = -1;
     $('btn-keep-editing').classList.add('hidden');
     $('btn-force-next').classList.add('hidden');
     var ch = state.chars[state.charIndex];
@@ -585,7 +640,24 @@
     var done = function () {
       if (called) return;
       called = true;
-      pad.newChar(ch);
+      var pc = $('paper-canvas');
+      if (!isPunct(ch)) {
+        // 新字显现：写得快 → 慢显（1s 淡入）；写得慢 → 快现（0.35s）
+        var fadeMs = state.pace === 'fast' ? 1000 : 350;
+        pc.style.transition = 'none';
+        pc.style.opacity = '0';
+        pad.newChar(ch);
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            pc.style.transition = 'opacity ' + fadeMs + 'ms ease';
+            pc.style.opacity = '1';
+          });
+        });
+      } else {
+        pc.style.transition = 'none';
+        pc.style.opacity = '1';
+        pad.newChar(ch);
+      }
       if (isPunct(ch)) {
         // 标点直接跳过：静默盖印收录，不展示，立即进下一字
         if (token !== state.flowToken || state.completing) return;
@@ -611,6 +683,7 @@
     if (img) state.workImages.push(img);
     updateProgress();
     saveCharToServer();
+    state.lastCharEnd = Date.now(); // 标点不计入节奏样本，但更新等待起点
     state.charIndex++;
     if (state.charIndex >= state.chars.length) {
       showDone();
@@ -628,6 +701,8 @@
     state.workImages.push(img);
     updateProgress();
     saveCharToServer();
+    pushPaceSample();              // 计入书写节奏（前字/本字/等待）
+    state.lastCharEnd = Date.now();
 
     // 缓缓隐藏，同时给"继续改写"
     $('btn-keep-editing').classList.remove('hidden');
@@ -638,7 +713,13 @@
       if (state.charIndex >= state.chars.length) {
         showDone();
       } else {
-        beginChar();
+        // 新字显现：写得快 → 慢显现；写得慢 → 快出现
+        var token = state.flowToken;
+        var delay = state.pace === 'fast' ? 900 : 200;
+        setTimeout(function () {
+          if (token !== state.flowToken || !state.completing) return;
+          beginChar();
+        }, delay);
       }
     });
   }
@@ -962,6 +1043,14 @@
     closeTools();
     hideOverlays();
     ensurePad();
+    // 续写：节奏同样复位为慢
+    state.pace = 'slow';
+    state.paceHist = [];
+    state.charT0 = 0;
+    state.charGap = 0;
+    state.lastCharEnd = 0;
+    state.pacePushedFor = -1;
+    try { music.setActivity(0); } catch (e) {}
     pad.setFont(state.font.stack);
     pad.setPen(state.pen.id);
     if (!state.musicOn) { music.start(); state.musicOn = true; }

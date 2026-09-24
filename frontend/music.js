@@ -2,14 +2,15 @@
  *
  * 设计：
  * - 以中国五声音阶（宫商角徵羽）为音高材料，相对半音 [0, 2, 4, 7, 9]
- * - 每部经文配一组参数：{ root_midi, tempo_bpm, timbre, mood }
- * - 四层声部随抄写进度 setProgress(0~1) 逐层加入：
+ * - 每部经文配一组参数：{ root_midi, tempo_bpm, timbre, mood, gamma }
+ * - 声部：
  *     L0 持续低音 drone（一直开）
- *     L1 五声音阶随机游走的拨弦音（p > 0.15）
- *     L2 和声铺底 pad（p > 0.45）
- *     L3 高音泛音点缀（p > 0.75）
- * - L4 gamma 脑波层：40Hz 纯正弦，极低音量，全程铺底（一直开）
- *   可按经文配置 music_config.gamma = {hz, vol, off}，缺省 40Hz / 0.03 / 开
+ *     L1 花落：稀疏下行滑音，非音阶、无节拍（书写慢/停时浮现）
+ *     L2 和声铺底 pad（p > 0.45；写得快时降到三成）
+ *     L3 小磬 + 泉消 + 细雨（书写慢/停时浮现）
+ *     L4 gamma 脑波层（一直开）
+ * - 书写 activity 0~1（0=静止/慢，1=疾书）：setActivity() 设目标，
+ *   内部每 0.7s 平滑跟随；activity 高 → 自然声部淡出，只留 L0 + gamma
  */
 (function (global) {
   'use strict';
@@ -51,6 +52,11 @@
       g.connect(this.master);
       this.layers['L' + i] = g;
     }
+    // 4 秒噪声缓冲：泉消 / 细雨共用
+    var nb = this.ctx.createBuffer(1, this.ctx.sampleRate * 4, this.ctx.sampleRate);
+    var nd = nb.getChannelData(0);
+    for (var n = 0; n < nd.length; n++) nd[n] = Math.random() * 2 - 1;
+    this._noiseBuf = nb;
   };
 
   // 简单拨弦音色：triangle + 指数衰减包络
@@ -90,22 +96,40 @@
     this.layers.L0.gain.setTargetAtTime(1, ctx.currentTime, 2);
   };
 
-  // L1：五声音阶随机游走拨弦
-  MusicEngine.prototype._startMelody = function () {
+  // L1 花落：一片花瓣 = 下行滑音（非音阶、无节拍），极疏
+  MusicEngine.prototype._petal = function (when) {
+    var ctx = this.ctx;
+    var f0 = 900 + Math.random() * 500;
+    var f1 = 500 + Math.random() * 300;
+    var dur = 0.35 + Math.random() * 0.25;
+    var osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(f0, when);
+    osc.frequency.exponentialRampToValueAtTime(f1, when + dur);
+    var g = ctx.createGain();
+    g.gain.setValueAtTime(0, when);
+    g.gain.linearRampToValueAtTime(0.045, when + 0.06);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + dur + 0.9);
+    osc.connect(g);
+    g.connect(this.layers.L1);
+    osc.start(when);
+    osc.stop(when + dur + 1.1);
+  };
+
+  MusicEngine.prototype._startPetals = function () {
     var self = this;
-    var beat = 60 / this.config.tempo_bpm;
     function tick() {
       if (!self.playing) return;
-      // 随机游走：-2..+2 步，偶尔大跳
-      self.noteIndex += Math.floor(Math.random() * 5) - 2;
-      if (Math.random() < 0.12) self.noteIndex += (Math.random() < 0.5 ? -5 : 5);
-      var scaleLen = PENTA.length * 2;
-      var idx = ((self.noteIndex % scaleLen) + scaleLen) % scaleLen;
-      var octave = Math.floor(idx / PENTA.length);
-      var midi = self.config.root_midi + 12 + PENTA[idx % PENTA.length] + octave * 12;
-      var t = self.ctx.currentTime + 0.05;
-      self._pluck(midi, t, beat * 4, 0.16, 'L1');
-      self.timers.push(setTimeout(tick, beat * 1000 * (Math.random() < 0.3 ? 2 : 1)));
+      // 写得快时根本不触发，只调度下一次检查
+      if (self._nature > 0.45) {
+        var t = self.ctx.currentTime + 0.05;
+        self._petal(t);
+        if (Math.random() < 0.3) {
+          var n = 1 + Math.floor(Math.random() * 2);
+          for (var i = 0; i < n; i++) self._petal(t + 0.4 + Math.random() * 0.5 + i * 0.35);
+        }
+      }
+      self.timers.push(setTimeout(tick, 7000 + Math.random() * 11000));
     }
     tick();
   };
@@ -128,18 +152,97 @@
     tick();
   };
 
-  // L3：高音泛音点缀
-  MusicEngine.prototype._startSparkle = function () {
+  // L3 小磬：微失谐泛音，一击、十几秒自然衰减
+  MusicEngine.prototype._chime = function (when) {
+    var ctx = this.ctx, self = this;
+    var base = midiToFreq(this.config.root_midi + 24); // 高两个八度
+    [1, 2.02, 2.94].forEach(function (r, i) {
+      [-2, 2].forEach(function (cents) { // ±2 音分失谐 → 慢拍频 shimmer
+        var osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = base * r * Math.pow(2, cents / 1200);
+        var g = ctx.createGain();
+        g.gain.setValueAtTime(0, when);
+        g.gain.linearRampToValueAtTime(0.035 / (i + 1) / 2, when + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + 12 + Math.random() * 6);
+        osc.connect(g);
+        g.connect(self.layers.L3);
+        osc.start(when);
+        osc.stop(when + 20);
+      });
+    });
+  };
+
+  MusicEngine.prototype._startChime = function () {
     var self = this;
     function tick() {
       if (!self.playing) return;
-      var idx = Math.floor(Math.random() * PENTA.length);
-      var midi = self.config.root_midi + 36 + PENTA[idx];
-      var t = self.ctx.currentTime + 0.05;
-      self._pluck(midi, t, 5, 0.05, 'L3');
-      self.timers.push(setTimeout(tick, 4000 + Math.random() * 6000));
+      if (self._nature > 0.5) self._chime(self.ctx.currentTime + 0.05);
+      self.timers.push(setTimeout(tick, 40000 + Math.random() * 60000));
     }
     tick();
+  };
+
+  // L3 泉消：带通噪声 + 极慢起伏，一起一伏约 22 秒
+  MusicEngine.prototype._startSpring = function () {
+    var ctx = this.ctx;
+    var src = ctx.createBufferSource();
+    src.buffer = this._noiseBuf;
+    src.loop = true;
+    var bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 1100;
+    bp.Q.value = 0.7;
+    var g = ctx.createGain();
+    g.gain.value = 0.016;
+    var lfo = ctx.createOscillator();
+    lfo.frequency.value = 0.045;
+    var lg = ctx.createGain();
+    lg.gain.value = 0.008;
+    lfo.connect(lg);
+    lg.connect(g.gain);
+    src.connect(bp);
+    bp.connect(g);
+    g.connect(this.layers.L3);
+    src.start();
+    lfo.start();
+  };
+
+  // L3 细雨：高通噪声极低音量 + 偶发微小水滴
+  MusicEngine.prototype._startRain = function () {
+    var ctx = this.ctx, self = this;
+    var src = ctx.createBufferSource();
+    src.buffer = this._noiseBuf;
+    src.loop = true;
+    src.playbackRate.value = 0.7;
+    var hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 6000;
+    var g = ctx.createGain();
+    g.gain.value = 0.010;
+    src.connect(hp);
+    hp.connect(g);
+    g.connect(this.layers.L3);
+    src.start();
+    function droplet() {
+      if (!self.playing) return;
+      if (self._nature > 0.5) {
+        var t = self.ctx.currentTime + 0.05;
+        var o = self.ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.value = 3000 + Math.random() * 4000;
+        var dg = self.ctx.createGain();
+        dg.gain.setValueAtTime(0, t);
+        dg.gain.linearRampToValueAtTime(0.016, t + 0.01);
+        dg.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+        o.connect(dg);
+        dg.connect(self.layers.L3);
+        o.start(t);
+        o.stop(t + 0.15);
+      }
+      self.timers.push(setTimeout(droplet, 2000 + Math.random() * 7000));
+    }
+    droplet();
   };
 
   // L4：gamma 脑波层（40Hz 纯正弦，极低音量，全程铺底）
@@ -167,19 +270,26 @@
     this._ensureCtx();
     if (this.ctx.state === 'suspended') this.ctx.resume();
     this.playing = true;
-    this.noteIndex = 0;
+    this._activity = 0;          // 当前书写 activity（平滑值）
+    this._activityTarget = 0;    // 目标：setActivity() 设置
+    this._nature = 1;            // 自然声部电平 = 1 - activity
     this._startDrone();
     this._startGamma();
-    this._startMelody();
+    this._startPetals();
     this._startPad();
-    this._startSparkle();
+    this._startChime();
+    this._startSpring();
+    this._startRain();
     this.setProgress(this._progress || 0);
+    var self = this;
+    this._gateTimer = setInterval(function () { self._applyGates(); }, 700);
   };
 
   MusicEngine.prototype.stop = function () {
     this.playing = false;
     this.timers.forEach(clearTimeout);
     this.timers = [];
+    if (this._gateTimer) { clearInterval(this._gateTimer); this._gateTimer = 0; }
     if (this.ctx) {
       var self = this;
       this.master.gain.setTargetAtTime(0, this.ctx.currentTime, 0.5);
@@ -197,22 +307,31 @@
     this.start(); return true;
   };
 
-  /* 核心接口：抄写进度 0~1，逐层打开声部 */
+  /* 书写 activity：0=静止/慢，1=疾书；内部平滑跟随 */
+  MusicEngine.prototype.setActivity = function (a) {
+    this._activityTarget = Math.max(0, Math.min(1, a || 0));
+  };
+
+  // 综合门控：进度 × 书写状态，每 0.7s 平滑跟随一次
+  MusicEngine.prototype._applyGates = function () {
+    if (!this.ctx || !this.playing) return;
+    this._activity += (this._activityTarget - this._activity) * 0.3;
+    if (Math.abs(this._activityTarget - this._activity) < 0.01) this._activity = this._activityTarget;
+    this._nature = 1 - this._activity;
+    var pg = this._progGates || [1, 1, 0, 1, 1];
+    var t = this.ctx.currentTime;
+    this.layers.L0.gain.setTargetAtTime(1, t, 2.5);
+    this.layers.L1.gain.setTargetAtTime(pg[1] * this._nature, t, 2.5);
+    this.layers.L2.gain.setTargetAtTime(pg[2] * (1 - 0.7 * this._activity), t, 2.5);
+    this.layers.L3.gain.setTargetAtTime(pg[3] * this._nature, t, 2.5);
+    this.layers.L4.gain.setTargetAtTime(1, t, 2.5);
+  };
+
+  /* 核心接口：抄写进度 0~1（L2 和声铺底仍随进度加层；L1/L3 自然声只跟书写状态） */
   MusicEngine.prototype.setProgress = function (p) {
     this._progress = Math.max(0, Math.min(1, p));
-    if (!this.ctx) return;
-    var t = this.ctx.currentTime;
-    var gates = [
-      1,                                    // L0 drone：一直开
-      this._progress > 0.15 ? 1 : 0,        // L1 旋律
-      this._progress > 0.45 ? 1 : 0,        // L2 和声
-      this._progress > 0.75 ? 1 : 0,        // L3 泛音
-      1                                     // L4 gamma：一直开
-    ];
-    var self = this;
-    gates.forEach(function (on, i) {
-      self.layers['L' + i].gain.setTargetAtTime(on ? 1 : 0, t, 1.5);
-    });
+    this._progGates = [1, 1, this._progress > 0.45 ? 1 : 0, 1, 1];
+    this._applyGates();
   };
 
   /* 录制：把写字时生成的音乐录下来，随作品一起保留 */
