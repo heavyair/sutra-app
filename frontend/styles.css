@@ -344,20 +344,20 @@ button:active { transform: scale(0.97); }
 /* 整纸：宣纸竖排（右起直排），多张纸上下排布，只收录写过的字 */
 .dual-sheet { display: flex; flex-direction: column; gap: 22px; padding: 14px 0 34px; align-items: center; }
 .paper-sheet {
-  display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-content: flex-start;
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-content: flex-start;
   background: linear-gradient(135deg, #f7f1e0 0%, #f1e7cd 60%, #e9dcc0 100%);
   border: 1px solid #d8c69a; border-radius: 6px;
   box-shadow: 0 4px 18px rgba(0,0,0,.45), inset 0 0 40px rgba(150,120,70,.18);
   padding: 24px 20px; margin: 0 14px; width: calc(100% - 28px); max-width: 760px; box-sizing: border-box;
 }
-/* 页眉标题：横排，与 PDF 题字一致 */
+/* 页眉标题：横排，与 PDF 题字一致；过长时 JS 自动缩小字号保一行居中 */
 .sheet-head {
-  flex: 0 0 100%; text-align: center;
+  flex: 0 0 100%; text-align: center; white-space: nowrap; overflow: hidden;
   font-size: 30px; color: #2b2118; letter-spacing: 12px; text-indent: 12px;
   margin: 4px 0 12px; line-height: 1.4;
 }
-/* 字格：与 PDF 同款 120px 大字、10px 字距 */
-.sheet-cell { width: 120px; height: 120px; margin: 0; }
+/* 字格：字按笔画包围盒填满，64px 大字、8px 紧凑字距 */
+.sheet-cell { width: 64px; height: 64px; margin: 0; }
 .sheet-cell img { width: 100%; height: 100%; display: block; }
 .sheet-cell.burned { box-shadow: inset 0 0 10px rgba(110,100,75,.4); border-radius: 4px; }
 .work-empty-hint { color: var(--ink-dim); text-align: center; font-size: 13px; padding: 6px 0 20px; }
