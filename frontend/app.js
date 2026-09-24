@@ -1175,16 +1175,6 @@
   }
 
   function refreshLibraryWorks() {
-    // 注册用户：系统空间不足时提示下载本地保存
-    if (getToken()) {
-      api('/api/storage/status').then(function (res) {
-        var low = !!(res && res.ok && res.low);
-        $('storage-banner').classList.toggle('hidden', !low);
-        if (low) $('storage-pct').textContent = res.percent + '%';
-      }).catch(function () {});
-    } else {
-      $('storage-banner').classList.add('hidden');
-    }
     api('/api/my/works').then(function (res) {
       var works = (res && res.ok && res.works) || [];
       $('my-works-title').style.display = works.length ? '' : 'none';
