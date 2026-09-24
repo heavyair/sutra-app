@@ -587,4 +587,31 @@
       }
     });
   };
+
+  /* 作品查看器 PDF 用：复刻书写时 pad.snapshot() 的取景 ——
+   * 按原画布宽高比画满整张，再按模板字区裁剪（_fallbackGrid 同款近似），纸底，360px 宽。
+   * 与书写中"欣赏→PDF"用的成品快照同观感：字大、取景紧。 */
+  WritingPad.renderCropped = function (rec, ch) {
+    var W = 390;
+    var ar = (rec && rec.ar) || WritingPad._viewportAr() || 0.5;
+    var H = Math.max(1, Math.round(W / ar));
+    var cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    WritingPad.drawStatic(cv, rec, ch);
+    // 模板字区近似：字号正方形，中心 (w/2, 0.44h)；四周留 25%（snapshot 同款）
+    var charPx = Math.min(W, H) * 0.52;
+    var pad = charPx * 0.25;
+    var x = Math.max(0, W / 2 - charPx / 2 - pad);
+    var y = Math.max(0, H * 0.44 - charPx / 2 - pad);
+    var w = Math.min(W - x, charPx + pad * 2);
+    var h = Math.min(H - y, charPx + pad * 2);
+    var outW = 360, outH = Math.max(1, Math.round(360 * h / w));
+    var tmp = document.createElement('canvas');
+    tmp.width = outW; tmp.height = outH;
+    var c = tmp.getContext('2d');
+    c.fillStyle = '#f4eddc';
+    c.fillRect(0, 0, outW, outH);
+    c.drawImage(cv, x, y, w, h, 0, 0, outW, outH);
+    try { return tmp.toDataURL('image/png'); } catch (e) { return ''; }
+  };
 })(window);

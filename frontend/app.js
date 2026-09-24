@@ -1461,17 +1461,15 @@
   }
 
   /* ---------- 11. 生成 PDF（系统打印 → 存为 PDF） ---------- */
-  // 把已写字的笔迹渲染成图片（作品查看器用：按落笔记录重画）
+  // 把已写字的笔迹渲染成图片（作品查看器用：按落笔记录重画，取景复刻书写时的成品快照）
   function renderInkImages() {
     var imgs = [];
     var byPos = state.workCharsByPos || {};
     for (var i = 0; i < state.chars.length; i++) {
       var saved = byPos[i];
       if (!saved) continue;
-      var cv = document.createElement('canvas');
-      cv.width = cv.height = 240;
-      WritingPad.drawStatic(cv, saved.strokes || {}, state.chars[i]);
-      imgs.push(cv.toDataURL('image/png'));
+      var dataUrl = WritingPad.renderCropped(saved.strokes || {}, state.chars[i]);
+      if (dataUrl) imgs.push(dataUrl);
     }
     return imgs;
   }
