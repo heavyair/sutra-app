@@ -597,7 +597,9 @@
     var H = Math.max(1, Math.round(W / ar));
     var px = Math.min(W, H) * 0.52;
     var cx = W / 2, cy = H * 0.44;
-    var font = px + 'px ' + ((fontStack || '') + ',"Kaiti SC","KaiTi","STKaiti",serif');
+    // 字体栈与书写时 pad.fontStack 完全一致（setFont(state.font.stack) 原样传入，不加后缀）
+    var fs = fontStack || '"Kaiti SC","KaiTi","STKaiti",serif';
+    var font = px + 'px ' + fs;
     // 1) 模板字形包围盒（_computeGrid 同款；失败则 _fallbackGrid 同款）
     var bx, by, bw, bh;
     try {
@@ -624,10 +626,20 @@
     } catch (e) {
       bx = cx - px / 2; by = cy - px / 2; bw = px; bh = px;
     }
-    // 2) 按原画布比例重画笔迹（drawStatic 同管线）
+    // 2) 重画字迹。标点复刻 pad.stampChar：0.55x 字号、同字体栈、同锚点盖印，
+    //    与书写时的成品快照完全一致（drawStatic 的标点分支字体不同，裁剪会对不上）
     var cv = document.createElement('canvas');
     cv.width = W; cv.height = H;
-    WritingPad.drawStatic(cv, rec, ch);
+    if (rec && rec.auto === 'punct') {
+      var c2 = cv.getContext('2d');
+      c2.font = (px * 0.55) + 'px ' + fs;
+      c2.textAlign = 'center';
+      c2.textBaseline = 'middle';
+      c2.fillStyle = '#2b2118';
+      c2.fillText(ch || '', cx, cy);
+    } else {
+      WritingPad.drawStatic(cv, rec, ch);
+    }
     // 3) snapshot 同款裁剪：包围盒四周留 25%，输出 360px 宽，纸底 #f4eddc
     var pad = Math.max(bw, bh) * 0.25;
     var sx = Math.max(0, bx - pad), sy = Math.max(0, by - pad);
