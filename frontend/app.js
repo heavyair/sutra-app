@@ -1249,44 +1249,12 @@
 
   /* ---------- 9.5 双视图：逐字 / 整纸 ---------- */
   // 字位格：{pos, ch, saved(落笔记录|null), ash(是否纸灰)}
-  var SHEET_CAP = 180; // 每张纸最多 180 字（竖排约 12 列）
+  var SHEET_CAP = 180; // 保留：旧分页常量（现整纸为单张横排，不再分页）
   function mkEl(tag, cls) { var e = document.createElement(tag); if (cls) e.className = cls; return e; }
-  function inkImg(saved, ch, px, fill) {
+  function inkImg(saved, ch, px) {
     var cv = document.createElement('canvas');
     cv.width = cv.height = px || 240;
-    var rec = (saved && saved.strokes) || {};
-    if (fill) {
-      // 整纸视图：按笔画包围盒等比放大填满格子（不变形），字如标题般大
-      var pts = [];
-      ((rec && rec.strokes) || []).forEach(function (st) {
-        (st || []).forEach(function (p) { if (p && p[0] != null && p[1] != null) pts.push(p); });
-      });
-      if (pts.length > 1) {
-        var x0 = 1, y0 = 1, x1 = 0, y1 = 0, i, p;
-        for (i = 0; i < pts.length; i++) {
-          p = pts[i];
-          if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0];
-          if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1];
-        }
-        var bw = Math.max(0.05, x1 - x0), bh = Math.max(0.05, y1 - y0);
-        var sc = Math.min(cv.width / bw, cv.height / bh) * 0.9; // 留少许边
-        var ox = (cv.width - bw * sc) / 2 - x0 * sc;
-        var oy = (cv.height - bh * sc) / 2 - y0 * sc;
-        var nstrokes = (rec.strokes || []).map(function (st) {
-          return (st || []).map(function (pp) {
-            return [(pp[0] * sc + ox) / cv.width, (pp[1] * sc + oy) / cv.height, pp[2], pp[3]];
-          });
-        });
-        // 已归一化到画布：ar=1 即整幅 contain，原样落笔（含毛笔渲染）
-        WritingPad.drawStatic(cv, { pen: rec.pen, ar: 1, strokes: nstrokes }, ch);
-        var fimg = document.createElement('img');
-        fimg.src = cv.toDataURL('image/png');
-        fimg.alt = ch;
-        return fimg;
-      }
-      // 无笔画（如标点盖印）：走原绘制
-    }
-    WritingPad.drawStatic(cv, rec, ch);
+    WritingPad.drawStatic(cv, (saved && saved.strokes) || {}, ch);
     var img = document.createElement('img');
     img.src = cv.toDataURL('image/png');
     img.alt = ch;
@@ -1391,54 +1359,39 @@
     };
   }
 
-  // 整纸：宣纸竖排（右起直排）。只收录写过的字，从有字处起连续排布；
-  // 标题作卷首题字写进第一张纸；多张纸上下排布，翻页靠滚动（无按钮）
+  // 整纸：横排大字，与 PDF 生成一致（print-grid 同款字号字距）；标题作页眉
   function renderSheet(box, api, ctx) {
     box.innerHTML = ''; api.cardByPos = {};
-    var items = []; // {titleCh} 或 {c}
-    if (api.title) {
-      // 卷首题字：加书名号，一望即是标题
-      String('《' + api.title + '》').split('').forEach(function (ch) { items.push({ titleCh: ch }); });
-    }
-    (api.cells || []).forEach(function (c) { items.push({ c: c }); });
-    if (!items.length) {
+    var cells = api.cells || [];
+    if (!cells.length) {
       box.innerHTML = '<div class="work-empty">还没有写完的字，回去继续吧。</div>';
       return;
     }
-    var pages = [];
-    for (var i = 0; i < items.length; i += SHEET_CAP) pages.push(items.slice(i, i + SHEET_CAP));
-    var fontStack = (state.font && state.font.stack) || '';
-    pages.forEach(function (page) {
-      var sheet = mkEl('div', 'paper-sheet');
-      page.forEach(function (it) {
-        var d = mkEl('div', 'sheet-cell');
-        if (it.titleCh) {
-          d.classList.add('title-cell');
-          var s = mkEl('span', 'sheet-title-ch');
-          s.textContent = it.titleCh;
-          if (fontStack) s.style.fontFamily = fontStack;
-          d.appendChild(s);
-        } else {
-          var c = it.c;
-          var burned = c.ash || (ctx.isBurned && ctx.isBurned(c.pos));
-          d.appendChild(burned ? ashImg() : inkImg(c.saved, c.ch, 200, true));
-          if (burned) d.classList.add('burned');
-          if (ctx.onTap) {
-            d.style.cursor = 'pointer';
-            (function (pos) { d.addEventListener('click', function () { ctx.onTap(pos); }); })(c.pos);
-          }
-          api.cardByPos[c.pos] = d;
-        }
-        sheet.appendChild(d);
-      });
-      box.appendChild(sheet);
+    var sheet = mkEl('div', 'paper-sheet');
+    if (api.title) {
+      var head = mkEl('div', 'sheet-head');
+      head.textContent = '《' + api.title + '》';
+      var fontStack = (state.font && state.font.stack) || '';
+      if (fontStack) head.style.fontFamily = fontStack;
+      sheet.appendChild(head);
+    }
+    cells.forEach(function (c) {
+      var d = mkEl('div', 'sheet-cell');
+      var burned = c.ash || (ctx.isBurned && ctx.isBurned(c.pos));
+      d.appendChild(burned ? ashImg() : inkImg(c.saved, c.ch, 240));
+      if (burned) d.classList.add('burned');
+      if (ctx.onTap) {
+        d.style.cursor = 'pointer';
+        (function (pos) { d.addEventListener('click', function () { ctx.onTap(pos); }); })(c.pos);
+      }
+      api.cardByPos[c.pos] = d;
+      sheet.appendChild(d);
     });
-    // 兼容旧调用：滚动到第 pi 张纸
-    api._drawPage = function (pi) {
-      var sheets = box.querySelectorAll('.paper-sheet');
-      var t = sheets[Math.max(0, Math.min(sheets.length - 1, pi || 0))];
-      if (t && t.scrollIntoView) t.scrollIntoView({ block: 'start', behavior: 'smooth' });
-      api.sheetIdx = pi || 0;
+    box.appendChild(sheet);
+    // 兼容旧调用：单张纸，直接滚到顶部
+    api._drawPage = function () {
+      if (sheet && sheet.scrollIntoView) sheet.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      api.sheetIdx = 0;
     };
   }
 
@@ -2041,6 +1994,7 @@
       if (dual.view === 'char') dual.goTo(i); // 逐字：翻到正在烧的那张
       var card = dual.cardByPos[pos];
       if (!card) { burnedCount++; checkFinish(); return; }
+      if (dual.view === 'sheet' && card.scrollIntoView) card.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); // 整纸：把正在烧的字滚进视野
       burnCell(card, 750 + Math.random() * 550, function () { burnedCount++; checkFinish(); });
     }
     function checkFinish() {
