@@ -224,19 +224,40 @@
     });
     fab.style.display = (items && items.length) ? '' : 'none';
   }
-  // 各屏的功能按钮清单（书写屏用自己的工具菜单，不走全局）
+  // 各屏的功能按钮清单（书写屏用自己的工具菜单，不走全局；顶栏已全部移除）
   function toolsFor(id) {
+    if (id === 'screen-library') {
+      return getToken() ? [] : [{ label: '登录', onClick: gotoLogin }];
+    }
     if (id === 'screen-appreciate') {
-      return [
+      var items = [
         { label: 'PDF', onClick: printWork },
         { label: '分享', onClick: shareWork }
       ];
+      var vt = viewToggleItem(state.appreciateDual, 'screen-appreciate');
+      if (vt) items.push(vt);
+      items.push({ label: '返回', onClick: function () { showScreen('screen-write'); } });
+      return items;
     }
-    if (id === 'screen-work') return workviewTools();
-    if (id === 'screen-font') {
-      return [{ label: '抄经', onClick: function () { startWriting(state.flowToken); } }];
+    if (id === 'screen-work') {
+      var witems = workviewTools();
+      var wvt = viewToggleItem(state.workviewDual, 'screen-work');
+      if (wvt) witems.push(wvt);
+      witems.push({ label: '经文库', onClick: function () { state.flowToken++; showScreen('screen-library'); } });
+      return witems;
     }
     return [];
+  }
+  // 逐字/整纸切换收进工具菜单：按钮文字显示将要切换到的视图
+  function viewToggleItem(dual, screenId) {
+    if (!dual || typeof dual.switch !== 'function') return null;
+    return {
+      label: dual.view === 'char' ? '整纸' : '逐字',
+      onClick: function () {
+        dual.switch(dual.view === 'char' ? 'sheet' : 'char');
+        setScreenTools(toolsFor(screenId)); // 刷新菜单文字
+      }
+    };
   }
   function backToLibrary() {
     $('done-overlay').classList.add('hidden');
@@ -435,19 +456,17 @@
     showScreen('screen-invite');
   });
 
-  /* 登录按钮状态：未登录显示"登录"，已登录显示"已登录" */
-  function refreshLoginBtn() {
-    var btn = $('btn-goto-login');
-    if (btn) btn.textContent = getToken() ? '已登录' : '登录';
-  }
-
-  /* 经文库右上角：登录完全可选，不登录也能抄经 */
-  $('btn-goto-login').addEventListener('click', function () {
+  /* 登录入口：未登录时收进经文库的工具按钮 */
+  function gotoLogin() {
     if (getToken()) return;   // 已登录，不再跳转
     var code = null;
     try { code = localStorage.getItem('sutra_invite'); } catch (e) {}
     if (code) { enterAuth('login'); } else { showScreen('screen-invite'); }
-  });
+  }
+  function refreshLoginBtn() {
+    // 登录态变化时刷新经文库的工具菜单（顶栏已移除）
+    if ($('screen-library').classList.contains('active')) setScreenTools(toolsFor('screen-library'));
+  }
 
   /* 启动：无需注册/登录，直接进入经文库；有 token 则静默校验登录态 */
   (function boot() {
@@ -510,39 +529,54 @@
     });
   });
 
-  /* ---------- 4. 选经文 → 选字体 ---------- */
+  /* ---------- 4. 点经文：写过/写完的直达欣赏，没写过的直达抄写 ---------- */
   function openSutra(id, done) {
-    api('/api/sutra/' + encodeURIComponent(id)).then(function (res) {
-      if (done) done();
-      if (!res.ok) { alert(res.message || '加载失败，请重试'); return; }
-      var clean = (res.sutra.full_text || '').replace(/\s+/g, '');
-      state.fullChars = clean.split(''); // 全文（欣赏页用；书写时 state.chars 为段内）
-      if (!clean.length) {
-        alert('《' + res.sutra.title + '》全文待补充，敬请期待');
-        return;
-      }
-      state.sutra = res.sutra;
-      state.paras = splitParagraphs(clean);
-      state.totalChars = clean.length;
-      setPara(0);
-      state.workImages = [];
-      state.completing = false;
-      state.work = null;      // 新开一部作品（懒创建）
-      state.workData = null;
-      state.workCharsByPos = {}; // 新开：清空旧字迹表（欣赏页从头只显示本部）
-      state.flowToken++;
-      renderFontCards($('font-cards'), state.font.id, function (f) { state.font = f; });
-      music.setConfig(res.sutra.music_config || {});
-      showScreen('screen-font');
-    }).catch(function () {
-      if (done) done();
-      alert('网络错误，请重试');
-    });
+    var proceed = function () {
+      var mine = (state.myWorks || []).filter(function (w) { return w.sutra_id === id; });
+      if (mine.length) { if (done) done(); openWork(mine[0].id); return; }
+      // 新经：手势链内先解锁音频，再拉经文，直达抄写界面
+      try { if (!state.musicOn) { music.start(); state.musicOn = true; } } catch (e) {}
+      api('/api/sutra/' + encodeURIComponent(id)).then(function (res) {
+        if (done) done();
+        if (!res.ok) { stopPreMusic(); alert(res.message || '加载失败，请重试'); return; }
+        var clean = (res.sutra.full_text || '').replace(/\s+/g, '');
+        state.fullChars = clean.split(''); // 全文（欣赏页用；书写时 state.chars 为段内）
+        if (!clean.length) {
+          stopPreMusic();
+          alert('《' + res.sutra.title + '》全文待补充，敬请期待');
+          return;
+        }
+        state.sutra = res.sutra;
+        state.paras = splitParagraphs(clean);
+        state.totalChars = clean.length;
+        setPara(0);
+        state.workImages = [];
+        state.sessionStartPos = 0; // 新开：本会话快照从全文 0 开始
+        state.completing = false;
+        state.work = null;      // 新开一部作品（懒创建）
+        state.workData = null;
+        state.workCharsByPos = {}; // 新开：清空旧字迹表（欣赏页从头只显示本部）
+        state.flowToken++;
+        music.setConfig(res.sutra.music_config || {});
+        startWriting(state.flowToken); // 直达抄写（字体可在书写屏 ☰ → 字体 中换）
+      }).catch(function () {
+        if (done) done();
+        stopPreMusic();
+        alert('网络错误，请重试');
+      });
+    };
+    if (state.myWorksLoaded) { proceed(); return; }
+    // 我的作品还没拉到：先拉再分流（点经文时已显示"加载中…"）
+    api('/api/my/works').then(function (res) {
+      state.myWorks = (res && res.ok && res.works) || [];
+      state.myWorksLoaded = true;
+      proceed();
+    }).catch(function () { state.myWorksLoaded = true; proceed(); });
   }
-
-  $('btn-back-lib2').addEventListener('click', function () {
-    showScreen('screen-library');
-  });
+  function stopPreMusic() {
+    try { music.stop(); } catch (e) {}
+    state.musicOn = false;
+  }
 
   function renderFontCards(container, selectedId, onPick) {
     container.innerHTML = '';
@@ -1167,17 +1201,22 @@
     return { cells: cells, total: total };
   }
 
-  // 双视图组件：mount 内含 逐字|整纸 切换；ctx: {onTap(pos), isBurned(pos)}
-  function createDualView(mount, ctx) {
+  // 双视图组件：withToggle 为 true 时才显示 逐字|整纸 切换条（仪式用）；
+  // 欣赏/查看器的切换收进工具菜单（ctx: {onTap(pos), isBurned(pos)}）
+  function createDualView(mount, ctx, withToggle) {
     mount.innerHTML = '';
     var wrap = mkEl('div', 'dual-view');
-    var toggle = mkEl('div', 'view-toggle');
-    var bChar = mkEl('button', 'vt-btn active'); bChar.textContent = '逐字';
-    var bSheet = mkEl('button', 'vt-btn'); bSheet.textContent = '整纸';
-    toggle.appendChild(bChar); toggle.appendChild(bSheet);
+    var bChar = null, bSheet = null;
+    if (withToggle) {
+      var toggle = mkEl('div', 'view-toggle');
+      bChar = mkEl('button', 'vt-btn active'); bChar.textContent = '逐字';
+      bSheet = mkEl('button', 'vt-btn'); bSheet.textContent = '整纸';
+      toggle.appendChild(bChar); toggle.appendChild(bSheet);
+      wrap.appendChild(toggle);
+    }
     var charBox = mkEl('div', 'dual-char');
     var sheetBox = mkEl('div', 'dual-sheet hidden');
-    wrap.appendChild(toggle); wrap.appendChild(charBox); wrap.appendChild(sheetBox);
+    wrap.appendChild(charBox); wrap.appendChild(sheetBox);
     mount.appendChild(wrap);
     var api = {
       view: 'char', cells: [], total: 0, cardByPos: {},
@@ -1193,8 +1232,8 @@
     };
     function setView(v) {
       api.view = v;
-      bChar.classList.toggle('active', v === 'char');
-      bSheet.classList.toggle('active', v === 'sheet');
+      if (bChar) bChar.classList.toggle('active', v === 'char');
+      if (bSheet) bSheet.classList.toggle('active', v === 'sheet');
       charBox.classList.toggle('hidden', v !== 'char');
       sheetBox.classList.toggle('hidden', v !== 'sheet');
       renderActive();
@@ -1203,8 +1242,8 @@
       if (api.view === 'char') renderPager(charBox, api, ctx);
       else renderSheet(sheetBox, api, ctx);
     }
-    bChar.addEventListener('click', function () { setView('char'); });
-    bSheet.addEventListener('click', function () { setView('sheet'); });
+    if (bChar) bChar.addEventListener('click', function () { setView('char'); });
+    if (bSheet) bSheet.addEventListener('click', function () { setView('sheet'); });
     return api;
   }
 
@@ -1327,10 +1366,6 @@
     showScreen('screen-appreciate');
   }
 
-  $('btn-back-write').addEventListener('click', function () {
-    showScreen('screen-write');
-  });
-
   /* ---------- 11. 生成 PDF（系统打印 → 存为 PDF） ---------- */
   // 把已写字的笔迹渲染成图片（作品查看器用：按落笔记录重画）
   function renderInkImages() {
@@ -1407,9 +1442,10 @@
   function refreshLibraryWorks() {
     api('/api/my/works').then(function (res) {
       var works = (res && res.ok && res.works) || [];
+      state.myWorks = works; state.myWorksLoaded = true; // 点经文智能分流用
       $('my-works-title').style.display = works.length ? '' : 'none';
       renderWorkCards($('my-works'), works, true);
-    }).catch(function () {});
+    }).catch(function () { state.myWorksLoaded = true; });
     api('/api/works?limit=24').then(function (res) {
       renderWorkCards($('public-works'), (res && res.ok && res.works) || [], false);
     }).catch(function () {});
@@ -1534,11 +1570,6 @@
       $('dedication-block').classList.add('hidden');
     }
   }
-
-  $('btn-workview-back').addEventListener('click', function () {
-    state.flowToken++;
-    showScreen('screen-library');
-  });
 
   // 续写：从第一个没写的字进入（跳过开场，直达书写）
   function continueWork() {
@@ -1877,7 +1908,7 @@
     var dual = createDualView($('ceremony-stage'), {
       onTap: null, // 仪式中不点播回放
       isBurned: function (pos) { return !!burnedSet[pos]; }
-    });
+    }, true); // 仪式保留自己的 逐字|整纸 切换
     dual.render(cellsC, state.totalChars || fullC.length);
     try { $('ceremony-stage').scrollTop = 0; } catch (e) {}
     overlay.classList.remove('hidden');

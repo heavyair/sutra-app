@@ -25,6 +25,8 @@ html, body {
 
 .screen { display: none; min-height: 100dvh; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .screen.active { display: block; }
+/* 顶栏已移除：各屏顶部留出安全距离 */
+#screen-library, #screen-appreciate, #screen-work { padding-top: calc(10px + env(safe-area-inset-top)); }
 
 /* 顶栏 */
 .topbar {
@@ -194,6 +196,8 @@ button:active { transform: scale(0.97); }
   box-shadow: 0 4px 16px rgba(0,0,0,.35);
 }
 
+.workview-title { font-size: 20px; margin: 0 0 4px; text-align: center; }
+
 /* 工具菜单：从左下角散布全屏（书写屏与全局共用） */
 .tools-menu { position: fixed; inset: 0; z-index: 60; pointer-events: none; }
 .tools-menu.hidden { display: none; }
@@ -220,6 +224,10 @@ button:active { transform: scale(0.97); }
 .tools-menu.open .tool-item:nth-child(4) { --tx: 196px; --ty: -48px; }
 .tools-menu.open .tool-item:nth-child(5) { --tx: 150px; --ty: -210px; }
 .tools-menu.open .tool-item:nth-child(6) { --tx: 230px; --ty: -140px; }
+.tools-menu.open .tool-item:nth-child(7) { --tx: 250px; --ty: -60px; }
+.tools-menu.open .tool-item:nth-child(8) { --tx: 60px;  --ty: -250px; }
+.tools-menu.open .tool-item:nth-child(9) { --tx: 150px; --ty: -260px; }
+.tools-menu.open .tool-item:nth-child(10) { --tx: 230px; --ty: -210px; }
 
 /* 悬浮小按钮 */
 .pill {
