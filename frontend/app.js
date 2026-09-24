@@ -1292,6 +1292,24 @@
   }
   function ashImg() { var img = document.createElement('img'); img.src = randomAsh(); return img; }
 
+  // 整纸字格：与 PDF 同取景（renderCropped 紧裁剪，大字满格）；按 pos+笔画对象缓存
+  var _sheetCropCache = { key: '', map: {} };
+  function sheetCellImg(c) {
+    var wk = (state.work && state.work.id) ? 'w' + state.work.id : 'sess';
+    if (_sheetCropCache.key !== wk) _sheetCropCache = { key: wk, map: {} };
+    var rec = (c.saved && c.saved.strokes) || {};
+    var e = _sheetCropCache.map[c.pos];
+    var img = document.createElement('img');
+    if (e && e.rec === rec) { img.src = e.src; }
+    else {
+      var src = WritingPad.renderCropped(rec, c.ch, (state.font && state.font.stack) || '');
+      _sheetCropCache.map[c.pos] = { rec: rec, src: src };
+      img.src = src;
+    }
+    img.alt = c.ch || '';
+    return img;
+  }
+
   // 已写字按全文序号收集（欣赏/查看器共用）
   function collectWorkCells() {
     var byPos = state.workCharsByPos || {};
@@ -1404,7 +1422,7 @@
   }
 
   // 整纸：复刻 PDF 版式（等比缩小）：标题"抄经作品"＋《经名》·字数·日期＋字格；
-  // 字图与 PDF 同管线（240px drawStatic 原样渲染，只按 CSS 缩小）
+  // 字图与 PDF 同取景（renderCropped 紧裁剪，大字满格）
   function renderSheet(box, api, ctx) {
     box.innerHTML = ''; api.cardByPos = {};
     var cells = api.cells || [];
@@ -1427,7 +1445,7 @@
     cells.forEach(function (c) {
       var d = mkEl('div', 'sheet-cell');
       var burned = c.ash || (ctx.isBurned && ctx.isBurned(c.pos));
-      d.appendChild(burned ? ashImg() : inkImg(c.saved, c.ch, 240));
+      d.appendChild(burned ? ashImg() : sheetCellImg(c));
       if (burned) d.classList.add('burned');
       if (ctx.onTap) {
         d.style.cursor = 'pointer';
