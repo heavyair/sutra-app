@@ -157,10 +157,21 @@ def migrate_works():
              audio_path  TEXT,
              chars_total INTEGER DEFAULT 0,
              chars_done  INTEGER DEFAULT 0,
+             completed_at TEXT,
              created_at  TEXT DEFAULT (datetime('now')),
              updated_at  TEXT DEFAULT (datetime('now'))
            )"""
     )
+    # completed_at：公开作品 7 日焚化期的起点（幂等补列）
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(works)").fetchall()]
+    if "completed_at" not in cols:
+        conn.execute("ALTER TABLE works ADD COLUMN completed_at TEXT")
+        # 存量回填：已写完的公开作品自本次起算 7 日
+        conn.execute(
+            """UPDATE works SET completed_at = datetime('now')
+               WHERE completed_at IS NULL AND is_public = 1
+                 AND chars_total > 0 AND chars_done >= chars_total"""
+        )
     conn.execute(
         """CREATE TABLE IF NOT EXISTS work_chars (
              id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -659,6 +670,7 @@ def _work_json(w):
         "is_public": bool(w["is_public"]), "has_audio": bool(w["audio_path"]),
         "chars_total": w["chars_total"], "chars_done": w["chars_done"],
         "created_at": w["created_at"], "updated_at": w["updated_at"],
+        "completed_at": w["completed_at"] if "completed_at" in w.keys() else None,
     }
 
 
@@ -840,6 +852,38 @@ def work_delete(wid):
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
+
+
+@app.route("/api/works/<int:wid>/complete", methods=["POST"])
+def work_complete(wid):
+    """标记作品完成：公开作品自此 7 日后焚化（自动删除）。幂等。"""
+    conn = get_db()
+    w = conn.execute("SELECT * FROM works WHERE id = ?", (wid,)).fetchone()
+    role = _work_role(w, current_user())
+    if role not in ("owner", "writer"):
+        conn.close()
+        return jsonify({"ok": False, "message": "无权操作"}), 403
+    conn.execute("UPDATE works SET completed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+                 (wid,))
+    conn.commit()
+    w = conn.execute("SELECT * FROM works WHERE id = ?", (wid,)).fetchone()
+    conn.close()
+    j = _work_json(w)
+    return jsonify({"ok": True, "work": j})
+
+
+@app.route("/api/storage/status", methods=["GET"])
+def storage_status():
+    """磁盘用量：注册用户空间不足时提示下载本地保存。"""
+    try:
+        import shutil
+        db_dir = os.path.dirname(os.path.abspath(DB_PATH))
+        st = shutil.disk_usage(db_dir)
+        pct = round(st.used / st.total * 100, 1) if st.total else 0
+        return jsonify({"ok": True, "percent": pct, "low": pct >= 80,
+                        "free_mb": round(st.free / 1048576)})
+    except OSError:
+        return jsonify({"ok": True, "percent": 0, "low": False, "free_mb": 0})
 
 
 @app.route("/api/works/<int:wid>/share", methods=["POST"])

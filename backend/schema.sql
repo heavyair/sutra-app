@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS works (
   audio_path  TEXT,                          -- 写字时录制的音乐文件
   chars_total INTEGER DEFAULT 0,
   chars_done  INTEGER DEFAULT 0,
+  completed_at TEXT,                          -- 完成时间：公开作品自此 7 日后焚化（自动删除）
   created_at  TEXT DEFAULT (datetime('now')),
   updated_at  TEXT DEFAULT (datetime('now'))
 );

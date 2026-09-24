@@ -945,6 +945,11 @@
       '《' + state.sutra.title + '》 · 共 ' + state.totalChars + ' 字 · ' +
       d.getFullYear() + ' 年 ' + (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日';
     $('done-overlay').classList.remove('hidden');
+    // 标记完成：公开作品自此 7 日后焚化；匿名完成显示焚化提示
+    if (state.work && state.work.id) {
+      api('/api/works/' + state.work.id + '/complete', { method: 'POST' }).catch(function () {});
+    }
+    $('done-cremate-hint').classList.toggle('hidden', !!getToken());
     // 写字时生成的音乐：录制收尾并随作品保存
     try {
       music.stopRecording(function (blob) {
@@ -1054,6 +1059,16 @@
   }
 
   function refreshLibraryWorks() {
+    // 注册用户：系统空间不足时提示下载本地保存
+    if (getToken()) {
+      api('/api/storage/status').then(function (res) {
+        var low = !!(res && res.ok && res.low);
+        $('storage-banner').classList.toggle('hidden', !low);
+        if (low) $('storage-pct').textContent = res.percent + '%';
+      }).catch(function () {});
+    } else {
+      $('storage-banner').classList.add('hidden');
+    }
     api('/api/my/works').then(function (res) {
       var works = (res && res.ok && res.works) || [];
       $('my-works-title').style.display = works.length ? '' : 'none';

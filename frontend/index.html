@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1a1611">
 <title>抄经 · 静心</title>
-<link rel="stylesheet" href="styles.css?v=16">
+<link rel="stylesheet" href="styles.css?v=18">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@600&display=swap">
 </head>
@@ -53,6 +53,7 @@
   <!-- 3. 经文库列表 -->
   <section id="screen-library" class="screen active">
     <header class="topbar"><h2>经文库</h2><button id="btn-goto-login" class="ghost-btn">登录</button></header>
+    <div id="storage-banner" class="storage-banner hidden">系统空间将满（已用 <b id="storage-pct"></b>），请尽快把您的作品<b>下载保存到本地</b>，以免遗失。</div>
     <div class="filter-row">
       <button class="chip active" data-trad="all">全部</button>
       <button class="chip" data-trad="buddhist">佛经</button>
@@ -128,6 +129,7 @@
         <div class="done-seal">🪷</div>
         <h3>全部写完</h3>
         <p id="done-summary" class="picker-hint"></p>
+        <p id="done-cremate-hint" class="picker-hint hidden">此作七日后焚化 · 功德圆满 🪷</p>
         <div class="done-actions">
           <button id="btn-done-view" class="btn-primary">欣赏作品</button>
           <button id="btn-done-pdf" class="btn-secondary">生成 PDF</button>
@@ -196,8 +198,8 @@
 <!-- 打印专用：屏幕上隐藏，打印时显示 -->
 <div id="print-sheet"></div>
 
-<script src="music.js?v=17"></script>
-<script src="writing.js?v=17"></script>
-<script src="app.js?v=17"></script>
+<script src="music.js?v=18"></script>
+<script src="writing.js?v=18"></script>
+<script src="app.js?v=18"></script>
 </body>
 </html>
