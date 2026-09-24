@@ -310,23 +310,24 @@ button:active { transform: scale(0.97); }
 .dedication-block { margin: 10px 16px 0; padding: 12px 14px; border-radius: 10px;
   background: #f7f1e3; border: 1px solid #e0d0a8; }
 .dedication-label { font-size: 13px; letter-spacing: 3px; color: #8a6d2f; margin-bottom: 6px; }
-.dedication-text { font-size: 15px; line-height: 2; color: var(--ink); margin: 0;
+.dedication-text { font-size: 15px; line-height: 2; color: #4a3b28; margin: 0;
   font-family: "Songti SC", "Noto Serif CJK SC", serif; }
 .dedicate-card { width: min(92vw, 420px); }
 .dedicate-label2 { display: block; font-size: 13px; color: var(--ink-dim); margin: 10px 0 4px; }
 .text-input { width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 15px;
   border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); }
-.dedicate-preview { font-size: 14px; line-height: 2; color: var(--ink);
+.dedicate-preview { font-size: 14px; line-height: 2; color: #4a3b28;
   font-family: "Songti SC", "Noto Serif CJK SC", serif;
   background: #f7f1e3; border: 1px solid #e0d0a8; border-radius: 8px; padding: 10px 12px; margin: 4px 0 0; }
 
-/* 回向仪式：横幅轻薄可收起，不遮挡纸燃烧 */
+/* 回向仪式：顶部只有一条薄透条（半透明回向文 + 进度条），下方纸完整可见、燃烧可见 */
 #ceremony-overlay { position: fixed; inset: 0; z-index: 80; display: flex; flex-direction: column; }
 #ceremony-overlay.hidden { display: none !important; }
-.ceremony-veil { position: absolute; inset: 0; background: rgba(20, 16, 10, 0.28); }
-.ceremony-banner { position: relative; z-index: 2; padding: 10px 16px 8px;
-  background: linear-gradient(to bottom, rgba(24,19,12,.94), rgba(24,19,12,.82));
-  border-bottom: 1px solid #8a6d2f; max-height: 32vh; overflow-y: auto; flex: none; }
+.ceremony-veil { display: none; } /* 不再压暗：纸与燃烧全程清晰可见 */
+.ceremony-banner { position: relative; z-index: 2; flex: none;
+  padding: 8px 16px 16px;
+  background: linear-gradient(to bottom, rgba(24,19,12,.88), rgba(24,19,12,.5) 62%, rgba(24,19,12,0));
+  border-bottom: none; max-height: 30vh; overflow-y: auto; }
 #ceremony-stage { position: relative; z-index: 1; flex: 1; overflow-y: auto; padding-bottom: 28px; }
 
 /* 双视图：逐字 | 整纸 */
@@ -358,12 +359,16 @@ button:active { transform: scale(0.97); }
 .sheet-title-ch { font-size: 36px; color: #2b2118; line-height: 1; }
 .work-empty-hint { color: var(--ink-dim); text-align: center; font-size: 13px; padding: 6px 0 20px; }
 .ceremony-title-row { display: flex; align-items: center; justify-content: space-between; }
-#ceremony-fold { padding: 2px 8px; font-size: 12px; }
+.ceremony-banner .dedication-label { color: rgba(222,192,132,.92); margin-bottom: 4px;
+  text-shadow: 0 1px 6px rgba(0,0,0,.7); }
+#ceremony-fold { padding: 2px 8px; font-size: 12px; opacity: .85; }
 .ceremony-banner.collapsed #ceremony-text { display: none; }
-.ceremony-text { font-size: 15px; line-height: 1.9; color: #e8dcc0;
+.ceremony-text { font-size: 14px; line-height: 1.8; color: rgba(232,221,200,.82);
+  text-shadow: 0 1px 8px rgba(0,0,0,.75);
   font-family: "Songti SC", "Noto Serif CJK SC", serif; letter-spacing: 1px; }
-.ceremony-text .ch-read { color: #ffd978; text-shadow: 0 0 8px rgba(255, 217, 120, .6); }
-.ceremony-status { margin-top: 8px; font-size: 13px; color: #a89468; letter-spacing: 2px; }
+.ceremony-text .ch-read { color: rgba(255,217,120,.96); text-shadow: 0 0 10px rgba(255,217,120,.65); }
+.ceremony-status { margin-top: 6px; font-size: 12px; color: rgba(205,175,115,.85); letter-spacing: 2px;
+  text-shadow: 0 1px 6px rgba(0,0,0,.7); }
 .ceremony-done-mark { color: #ffd978; font-size: 20px; letter-spacing: 4px; text-align: center; margin-top: 6px; }
 /* 回向进度条 */
 .ceremony-progress {
