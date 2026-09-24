@@ -198,7 +198,71 @@
     });
     window.scrollTo(0, 0);
     if (id === 'screen-library') refreshLibraryWorks();
+    if (id === 'screen-write' && $('write-ui')) $('write-ui').style.display = '';
+    setScreenTools(toolsFor(id)); // 各屏功能按钮收拢进全局工具按钮
   }
+
+  /* ---------- 全局工具按钮：各屏功能按钮不用时缩进 ☰ ---------- */
+  function closeGlobalTools() {
+    var m = $('global-menu');
+    if (!m || m.classList.contains('hidden')) return;
+    m.classList.remove('open');
+    setTimeout(function () { m.classList.add('hidden'); }, 320);
+  }
+  function setScreenTools(items) {
+    var m = $('global-menu'), fab = $('global-tools');
+    if (!m || !fab) return;
+    m.classList.remove('open');
+    m.classList.add('hidden');
+    m.innerHTML = '';
+    (items || []).forEach(function (it) {
+      var b = document.createElement('button');
+      b.className = 'tool-item';
+      b.textContent = it.label;
+      b.addEventListener('click', function () { closeGlobalTools(); it.onClick(); });
+      m.appendChild(b);
+    });
+    fab.style.display = (items && items.length) ? '' : 'none';
+  }
+  // 各屏的功能按钮清单（书写屏用自己的工具菜单，不走全局）
+  function toolsFor(id) {
+    if (id === 'screen-appreciate') {
+      return [
+        { label: 'PDF', onClick: printWork },
+        { label: '分享', onClick: shareWork }
+      ];
+    }
+    if (id === 'screen-work') return workviewTools();
+    if (id === 'screen-font') {
+      return [{ label: '抄经', onClick: function () { startWriting(state.flowToken); } }];
+    }
+    return [];
+  }
+  function backToLibrary() {
+    $('done-overlay').classList.add('hidden');
+    state.flowToken++;
+    if (state.musicOn) { music.stop(); state.musicOn = false; }
+    try { music.stopRecording(); } catch (e) {}
+    showScreen('screen-library');
+  }
+  $('global-tools').addEventListener('click', function (e) {
+    e.stopPropagation();
+    var m = $('global-menu');
+    if (m.classList.contains('hidden')) {
+      m.classList.remove('hidden');
+      requestAnimationFrame(function () { m.classList.add('open'); });
+    } else {
+      closeGlobalTools();
+    }
+  });
+  // 点菜单外任意处收起
+  document.addEventListener('pointerdown', function (e) {
+    var m = $('global-menu');
+    if (!m || m.classList.contains('hidden')) return;
+    if (m.contains(e.target)) return;
+    if (e.target && (e.target.id === 'global-tools' || e.target.closest('#global-tools'))) return;
+    closeGlobalTools();
+  }, true);
 
   function getToken() {
     try { return localStorage.getItem('sutra_token'); } catch (e) { return null; }
@@ -499,10 +563,6 @@
       container.appendChild(b);
     });
   }
-
-  $('btn-start-copy').addEventListener('click', function () {
-    startWriting(state.flowToken);
-  });
 
   /* ---------- 5. 开场：经名 2 秒 → 段落慢读高亮（无音乐）→ 书写 ---------- */
   // 全文按标点切成段落：遇到 。！？ 必断；；， 视长度断；超 40 字硬断
@@ -956,6 +1016,9 @@
     $('done-overlay').classList.remove('hidden');
     $('done-main').classList.remove('hidden');
     $('done-cremated').classList.add('hidden');
+    // 完成屏期间收起书写屏自己的工具按钮，功能走全局工具按钮
+    if ($('write-ui')) $('write-ui').style.display = 'none';
+    setScreenTools(doneTools());
     // 标记完成并渲染去向选择（陈列 / 焚化；注册用户多一个私藏）
     renderFarewell(null);
     if (state.work && state.work.id) {
@@ -980,17 +1043,18 @@
     } catch (e) {}
   }
 
-  $('btn-done-view').addEventListener('click', function () {
-    $('done-overlay').classList.add('hidden');
-    openAppreciate();
-  });
-  $('btn-done-lib').addEventListener('click', function () {
-    state.flowToken++;
-    if (state.musicOn) { music.stop(); state.musicOn = false; }
-    showScreen('screen-library');
-  });
-  $('btn-done-pdf').addEventListener('click', printWork);
-  $('btn-done-share').addEventListener('click', shareWork);
+  // 完成屏的功能按钮收拢进全局工具按钮
+  function doneTools() {
+    return [
+      { label: '欣赏', onClick: function () {
+          $('done-overlay').classList.add('hidden');
+          openAppreciate();
+        } },
+      { label: 'PDF', onClick: printWork },
+      { label: '分享', onClick: shareWork },
+      { label: '经文库', onClick: backToLibrary }
+    ];
+  }
 
   /* ---------- 9b. 完成后去向：陈列 / 焚化 ---------- */
   var FAREWELL_MODES = [
@@ -1056,6 +1120,8 @@
           if (res && res.ok) {
             $('done-main').classList.add('hidden');
             $('done-cremated').classList.remove('hidden');
+            // 焚化后只剩一个去处
+            setScreenTools([{ label: '经文库', onClick: backToLibrary }]);
             state.work = null;
           } else { alert('焚化失败，请重试'); }
         }).catch(function () { alert('焚化失败，请重试'); });
@@ -1071,12 +1137,6 @@
     if (!t) return;
     markFarewellDay(parseInt(t.dataset.days, 10));
     chooseFarewell('cremate', parseInt(t.dataset.days, 10));
-  });
-  $('btn-cremated-lib').addEventListener('click', function () {
-    $('done-overlay').classList.add('hidden');
-    state.flowToken++;
-    if (state.musicOn) { music.stop(); state.musicOn = false; }
-    showScreen('screen-library');
   });
 
   /* ---------- 9.5 双视图：逐字 / 整纸 ---------- */
@@ -1270,8 +1330,6 @@
   $('btn-back-write').addEventListener('click', function () {
     showScreen('screen-write');
   });
-  $('btn-work-pdf').addEventListener('click', printWork);
-  $('btn-work-share').addEventListener('click', shareWork);
 
   /* ---------- 11. 生成 PDF（系统打印 → 存为 PDF） ---------- */
   // 把已写字的笔迹渲染成图片（作品查看器用：按落笔记录重画）
@@ -1382,6 +1440,27 @@
     }).catch(function () { alert('网络异常'); });
   }
 
+  // 作品查看器的功能按钮（供全局工具菜单用）
+  function workviewTools() {
+    var res = state.workData;
+    var w = res && res.work;
+    if (!w) return [];
+    var dedicated = !!w.dedicated_at;
+    var finished = w.chars_done >= w.chars_total && w.chars_total > 0;
+    var isOwner = w.role === 'owner';
+    var canDedicate = isOwner && getToken() && !dedicated && w.chars_done > 0;
+    var items = [];
+    if (!dedicated && !finished) items.push({ label: '续写', onClick: continueWork });
+    if (!dedicated && w.chars_done > 0) {
+      items.push({ label: '放映', onClick: openInkPlay });
+      items.push({ label: 'PDF', onClick: printWork });
+    }
+    if (isOwner && getToken()) items.push({ label: '分享', onClick: shareViewedWork });
+    if (canDedicate) items.push({ label: '回向', onClick: openDedicateDialog });
+    if (isOwner) items.push({ label: '删除', onClick: deleteWork });
+    return items;
+  }
+
   function renderWorkView(res, share) {
     var w = res.work;
     $('workview-title').textContent = '《' + (w.title || '') + '》';
@@ -1440,16 +1519,10 @@
     var undone = w.chars_total - w.chars_done;
     $('workview-hint').textContent =
       (!dedicated && undone > 0) ? '还有 ' + undone + ' 字未写 · 点「续写」继续' : '';
-    // 按钮：续写（写完则隐藏）；分享/删除仅作者；回向仅登录作者且未回向
-    var finished = w.chars_done >= w.chars_total && w.chars_total > 0;
-    var isOwner = w.role === 'owner';
-    var canDedicate = isOwner && getToken() && !dedicated && w.chars_done > 0;
-    $('btn-workview-dedicate').style.display = canDedicate ? '' : 'none';
+    // 功能按钮收拢进全局工具按钮：续写（写完则无）；分享/删除仅作者；回向仅登录作者且未回向
+    setScreenTools(workviewTools());
     if (dedicated) {
       // 纪念态：不可再欣赏（无放映/PDF/回放/续写），展示尘埃与回向文
-      $('btn-workview-continue').style.display = 'none';
-      $('btn-workview-play').style.display = 'none';
-      $('btn-workview-pdf').style.display = 'none';
       $('workview-meta').textContent =
         w.chars_done + ' 字 · 已回向 · 尘归尘，功德圆满';
       var db = $('dedication-block');
@@ -1459,12 +1532,7 @@
         (w.dedication_target ? '回向：' + w.dedication_target + ' · ' : '') + fmtTime(w.dedicated_at);
     } else {
       $('dedication-block').classList.add('hidden');
-      $('btn-workview-continue').style.display = finished ? 'none' : '';
-      $('btn-workview-play').style.display = w.chars_done > 0 ? '' : 'none';
-      $('btn-workview-pdf').style.display = w.chars_done > 0 ? '' : 'none';
     }
-    $('btn-workview-share').style.display = (isOwner && getToken()) ? '' : 'none';
-    $('btn-workview-delete').style.display = isOwner ? '' : 'none';
   }
 
   $('btn-workview-back').addEventListener('click', function () {
@@ -1473,7 +1541,7 @@
   });
 
   // 续写：从第一个没写的字进入（跳过开场，直达书写）
-  $('btn-workview-continue').addEventListener('click', function () {
+  function continueWork() {
     var res = state.workData;
     if (!res) return;
     var byPos = state.workCharsByPos || {};
@@ -1484,7 +1552,7 @@
     state.sessionStartPos = idx; // 续写：本会话快照从 idx 开始对应全文序号
     setParaForGlobalPos(idx); // 按全文序号定位到段落
     startWritingDirect();
-  });
+  }
 
   function startWritingDirect() {
     state.flowToken++;
@@ -1502,7 +1570,7 @@
     beginChar();
   }
 
-  $('btn-workview-share').addEventListener('click', function () {
+  function shareViewedWork() {
     var w = state.workData && state.workData.work;
     if (!w) return;
     api('/api/works/' + w.id + '/share', { method: 'POST' }).then(function (res) {
@@ -1518,16 +1586,16 @@
         else prompt('复制分享链接：', url);
       }
     }).catch(function () { alert('网络异常'); });
-  });
+  }
 
-  $('btn-workview-delete').addEventListener('click', function () {
+  function deleteWork() {
     var w = state.workData && state.workData.work;
     if (!w || !confirm('确定删除这个作品吗？')) return;
     api('/api/works/' + w.id, { method: 'DELETE' }).then(function (res) {
       if (res && res.ok) showScreen('screen-library');
       else alert('删除失败');
     });
-  });
+  }
 
   /* ---------- 回向 ---------- */
   // 与服务端 DEDICATION_TEXTS 保持一致（{target} 为回向对象占位）
@@ -1567,12 +1635,12 @@
     }
   }
 
-  $('btn-workview-dedicate').addEventListener('click', function () {
+  function openDedicateDialog() {
     $('dedicate-target').value = defaultDedicateTarget();
     paintDedicateKinds();
     updateDedicatePreview();
     $('dedicate-overlay').classList.remove('hidden');
-  });
+  }
   $('dedicate-kinds').addEventListener('click', function (e) {
     var b = e.target && e.target.getAttribute ? e.target.getAttribute('data-kind') : null;
     if (!b || !DEDICATION_TEXTS[b]) return;
@@ -2009,8 +2077,6 @@
     $('inkplay-overlay').classList.add('hidden');
   }
   $('btn-inkplay-close').addEventListener('click', closeInkPlay);
-  $('btn-workview-play').addEventListener('click', openInkPlay);
-  $('btn-workview-pdf').addEventListener('click', printWork);
 
   /* ---------- 分享链接直达：#w=123&share=xxx ---------- */
   (function () {

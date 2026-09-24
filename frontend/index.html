@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1a1611">
 <title>抄经 · 静心</title>
-<link rel="stylesheet" href="styles.css?v=29">
+<link rel="stylesheet" href="styles.css?v=30">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@600&display=swap">
 </head>
@@ -77,9 +77,6 @@
     </header>
     <p class="picker-hint">临摹字将以所选字体虚化显示</p>
     <div id="font-cards" class="pick-cards"></div>
-    <div class="picker-foot">
-      <button id="btn-start-copy" class="btn-primary btn-big">开始抄经</button>
-    </div>
   </section>
 
   <!-- 4. 全屏抄写 -->
@@ -110,7 +107,7 @@
     </div>
 
     <!-- 工具菜单：散布全屏 -->
-    <div id="tools-menu" class="hidden">
+    <div id="tools-menu" class="tools-menu hidden">
       <button class="tool-item" data-tool="sutra">经文</button>
       <button class="tool-item" data-tool="font">字体</button>
       <button class="tool-item" data-tool="music">背景音</button>
@@ -139,20 +136,11 @@
           </div>
           <p id="farewell-note" class="picker-hint"></p>
         </div>
-        <div class="done-actions">
-          <button id="btn-done-view" class="btn-primary">欣赏作品</button>
-          <button id="btn-done-pdf" class="btn-secondary">生成 PDF</button>
-          <button id="btn-done-share" class="btn-secondary">分享</button>
-          <button id="btn-done-lib" class="btn-ghost">返回经文库</button>
-        </div>
       </div>
       <div class="picker-card hidden" id="done-cremated">
         <div class="done-seal">🪷</div>
         <h3>尘归尘 · 功德圆满</h3>
         <p class="picker-hint">此作已焚化，形化去，功德留存。</p>
-        <div class="done-actions">
-          <button id="btn-cremated-lib" class="btn-primary">返回经文库</button>
-        </div>
       </div>
     </div>
   </section>
@@ -169,10 +157,6 @@
       <p id="work-meta"></p>
     </div>
     <div id="appreciate-dual"></div>
-    <div class="picker-foot">
-      <button id="btn-work-pdf" class="btn-primary">生成 PDF</button>
-      <button id="btn-work-share" class="btn-secondary">分享</button>
-    </div>
   </section>
 
   <!-- 6. 作品查看：逐字回放 / 续写 / 分享 -->
@@ -185,14 +169,6 @@
     <div id="workview-head">
       <p id="workview-meta" class="picker-hint"></p>
       <audio id="workview-audio" controls style="display:none;width:100%"></audio>
-      <div class="workview-actions">
-        <button id="btn-workview-continue" class="btn-primary">续写</button>
-        <button id="btn-workview-play" class="btn-secondary" style="display:none">▶ 落笔放映</button>
-        <button id="btn-workview-pdf" class="btn-secondary" style="display:none">生成 PDF</button>
-        <button id="btn-workview-share" class="btn-secondary" style="display:none">分享</button>
-        <button id="btn-workview-dedicate" class="btn-secondary" style="display:none">🪷 回向</button>
-        <button id="btn-workview-delete" class="btn-ghost" style="display:none">删除</button>
-      </div>
       <div id="dedication-block" class="dedication-block hidden">
         <div class="dedication-label">🪷 回向文</div>
         <p id="dedication-text" class="dedication-text"></p>
@@ -205,6 +181,10 @@
   </section>
 
 </div>
+
+<!-- 全局工具按钮：各屏功能按钮收拢于此（书写屏用自己的工具菜单） -->
+<button id="global-tools" class="fab" style="display:none" aria-label="工具">☰</button>
+<div id="global-menu" class="tools-menu hidden"></div>
 
 <!-- 回放弹窗：重演一字的落笔过程 -->
 <div id="replay-overlay" class="picker-overlay hidden">
@@ -278,6 +258,6 @@
 
 <script src="music.js?v=29"></script>
 <script src="writing.js?v=29"></script>
-<script src="app.js?v=29"></script>
+<script src="app.js?v=30"></script>
 </body>
 </html>

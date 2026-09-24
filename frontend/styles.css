@@ -167,6 +167,8 @@ button:active { transform: scale(0.97); }
   background: rgba(26, 22, 17, 0.55); padding: 24px;
 }
 .picker-overlay.hidden { display: none; }
+/* 回向/放映/回放等弹窗盖住全局工具按钮（完成屏除外：它的功能按钮就在全局工具按钮里） */
+#dedicate-overlay, #inkplay-overlay, #replay-overlay { z-index: 70; }
 .picker-card {
   background: var(--bg-soft); border: 1px solid var(--line); border-radius: 20px;
   padding: 24px 20px; width: 100%; max-width: 420px;
@@ -192,9 +194,14 @@ button:active { transform: scale(0.97); }
   box-shadow: 0 4px 16px rgba(0,0,0,.35);
 }
 
-/* 工具菜单：从左下角散布全屏 */
-#tools-menu { position: absolute; inset: 0; z-index: 9; pointer-events: none; }
-#tools-menu.hidden { display: none; }
+/* 工具菜单：从左下角散布全屏（书写屏与全局共用） */
+.tools-menu { position: fixed; inset: 0; z-index: 60; pointer-events: none; }
+.tools-menu.hidden { display: none; }
+#global-tools {
+  position: fixed; z-index: 61;
+  left: calc(18px + env(safe-area-inset-left));
+  bottom: calc(24px + env(safe-area-inset-bottom));
+}
 .tool-item {
   position: absolute; pointer-events: auto;
   left: calc(18px + env(safe-area-inset-left));
@@ -205,14 +212,14 @@ button:active { transform: scale(0.97); }
   opacity: 0; transform: translate(0, 0) scale(0.4);
   transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 0.25s;
 }
-#tools-menu.open .tool-item { opacity: 1; transform: translate(var(--tx), var(--ty)) scale(1); }
+.tools-menu.open .tool-item { opacity: 1; transform: translate(var(--tx), var(--ty)) scale(1); }
 .tool-item.off { color: var(--ink-dim); border-color: var(--line); }
-#tools-menu.open .tool-item:nth-child(1) { --tx: 12px;  --ty: -190px; }
-#tools-menu.open .tool-item:nth-child(2) { --tx: 92px;  --ty: -168px; }
-#tools-menu.open .tool-item:nth-child(3) { --tx: 158px; --ty: -118px; }
-#tools-menu.open .tool-item:nth-child(4) { --tx: 196px; --ty: -48px; }
-#tools-menu.open .tool-item:nth-child(5) { --tx: 150px; --ty: -210px; }
-#tools-menu.open .tool-item:nth-child(6) { --tx: 230px; --ty: -140px; }
+.tools-menu.open .tool-item:nth-child(1) { --tx: 12px;  --ty: -190px; }
+.tools-menu.open .tool-item:nth-child(2) { --tx: 92px;  --ty: -168px; }
+.tools-menu.open .tool-item:nth-child(3) { --tx: 158px; --ty: -118px; }
+.tools-menu.open .tool-item:nth-child(4) { --tx: 196px; --ty: -48px; }
+.tools-menu.open .tool-item:nth-child(5) { --tx: 150px; --ty: -210px; }
+.tools-menu.open .tool-item:nth-child(6) { --tx: 230px; --ty: -140px; }
 
 /* 悬浮小按钮 */
 .pill {
