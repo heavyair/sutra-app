@@ -249,3 +249,35 @@ button:active { transform: scale(0.97); }
   #print-sheet .print-grid { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
   #print-sheet .print-grid img { width: 120px; border: 1px solid #ccc; }
 }
+
+/* ---- 作品（v8）：画廊卡片 / 作品查看 / 回放 ---- */
+.sec-title { font-size: 16px; margin: 20px 16px 8px; color: var(--ink); }
+.foot-spacer { height: 40px; }
+.work-cards { display: flex; flex-direction: column; gap: 10px; padding: 0 16px; }
+.work-card {
+  border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  background: var(--card); text-align: left; width: 100%;
+}
+.work-card:active { border-color: var(--gold); }
+.work-card .wc-title { font-size: 15px; font-weight: 600; }
+.work-card .wc-meta { font-size: 12px; color: var(--ink-dim); margin-top: 4px; }
+.work-card .wc-bar { height: 4px; border-radius: 2px; background: var(--line); margin-top: 8px; overflow: hidden; }
+.work-card .wc-bar i { display: block; height: 100%; background: var(--gold); border-radius: 2px; }
+.work-empty-hint { font-size: 13px; color: var(--ink-dim); padding: 4px 16px; }
+
+#workview-head { padding: 0 16px; }
+.workview-actions { display: flex; gap: 10px; margin: 12px 0; }
+.workview-grid {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; padding: 0 16px;
+}
+.wv-cell {
+  aspect-ratio: 1; border: 1px solid var(--line); border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; background: var(--card); color: var(--ink);
+}
+.wv-cell.done { border-color: var(--gold); }
+.wv-cell.todo { color: var(--ink-dim); opacity: 0.45; font-size: 18px; }
+
+.replay-card { width: min(92vw, 420px); }
+.replay-stage { position: relative; width: 100%; aspect-ratio: 3/4; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--paper); }
+.replay-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }

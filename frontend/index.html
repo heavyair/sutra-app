@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1a1611">
 <title>抄经 · 静心</title>
-<link rel="stylesheet" href="styles.css?v=7">
+<link rel="stylesheet" href="styles.css?v=8">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@600&display=swap">
 </head>
@@ -59,6 +59,13 @@
       <button class="chip" data-trad="taoist">道经</button>
     </div>
     <ul id="sutra-list" class="sutra-list"></ul>
+
+    <h3 class="sec-title" id="my-works-title" style="display:none">我的抄经</h3>
+    <div id="my-works" class="work-cards"></div>
+
+    <h3 class="sec-title">大家的抄经</h3>
+    <div id="public-works" class="work-cards"></div>
+    <div class="foot-spacer"></div>
   </section>
 
   <!-- 3. 字体选择 -->
@@ -158,13 +165,48 @@
     </div>
   </section>
 
+  <!-- 6. 作品查看：逐字回放 / 续写 / 分享 -->
+  <section id="screen-work" class="screen">
+    <header class="topbar">
+      <button id="btn-workview-back" class="btn-ghost">‹ 返回</button>
+      <h2 id="workview-title"></h2>
+      <span class="topbar-spacer"></span>
+    </header>
+    <div id="workview-head">
+      <p id="workview-meta" class="picker-hint"></p>
+      <audio id="workview-audio" controls style="display:none;width:100%"></audio>
+      <div class="workview-actions">
+        <button id="btn-workview-continue" class="btn-primary">续写</button>
+        <button id="btn-workview-share" class="btn-secondary" style="display:none">分享</button>
+        <button id="btn-workview-delete" class="btn-ghost" style="display:none">删除</button>
+      </div>
+    </div>
+    <div id="workview-grid" class="workview-grid"></div>
+    <div class="foot-spacer"></div>
+  </section>
+
+</div>
+
+<!-- 回放弹窗：重演一字的落笔过程 -->
+<div id="replay-overlay" class="picker-overlay hidden">
+  <div class="picker-card replay-card">
+    <h3 id="replay-label"></h3>
+    <div class="replay-stage">
+      <canvas id="replay-paper"></canvas>
+      <canvas id="replay-ink"></canvas>
+    </div>
+    <div class="done-actions">
+      <button id="btn-replay-again" class="btn-secondary">再播一次</button>
+      <button id="btn-replay-close" class="btn-primary">关闭</button>
+    </div>
+  </div>
 </div>
 
 <!-- 打印专用：屏幕上隐藏，打印时显示 -->
 <div id="print-sheet"></div>
 
-<script src="music.js?v=7"></script>
-<script src="writing.js?v=7"></script>
-<script src="app.js?v=7"></script>
+<script src="music.js?v=8"></script>
+<script src="writing.js?v=8"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

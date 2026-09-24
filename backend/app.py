@@ -140,9 +140,50 @@ def init_db():
     conn.close()
 
 
+def migrate_works():
+    """作品与逐字落笔存储（幂等）。"""
+    conn = get_db()
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS works (
+             id          INTEGER PRIMARY KEY AUTOINCREMENT,
+             sutra_id    TEXT NOT NULL,
+             title       TEXT NOT NULL,
+             font_id     TEXT,
+             owner_type  TEXT NOT NULL DEFAULT 'anon',
+             owner_id    INTEGER,
+             anon_key    TEXT,
+             is_public   INTEGER NOT NULL DEFAULT 1,
+             share_token TEXT,
+             audio_path  TEXT,
+             chars_total INTEGER DEFAULT 0,
+             chars_done  INTEGER DEFAULT 0,
+             created_at  TEXT DEFAULT (datetime('now')),
+             updated_at  TEXT DEFAULT (datetime('now'))
+           )"""
+    )
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS work_chars (
+             id         INTEGER PRIMARY KEY AUTOINCREMENT,
+             work_id    INTEGER NOT NULL,
+             pos        INTEGER NOT NULL,
+             ch         TEXT NOT NULL,
+             pen        TEXT,
+             strokes    TEXT NOT NULL,
+             updated_at TEXT DEFAULT (datetime('now')),
+             UNIQUE (work_id, pos)
+           )"""
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_works_owner ON works(owner_type, owner_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_works_public ON works(is_public, updated_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_work_chars_work ON work_chars(work_id)")
+    conn.commit()
+    conn.close()
+
+
 init_db()
 migrate_auth()
 migrate_verification()
+migrate_works()
 
 
 def allowed_file(filename):
@@ -578,6 +619,278 @@ def comments():
     cid = cur.lastrowid
     conn.close()
     return jsonify({"ok": True, "id": cid})
+
+
+# ---------- 作品（逐字落笔存储） ----------
+# 匿名作品公开：任何人可看、可续写、可改；注册用户作品默认私有，可分享。
+
+AUDIO_DIR = os.path.join(UPLOAD_DIR, "audio")
+os.makedirs(AUDIO_DIR, exist_ok=True)
+
+
+def _anon_key():
+    return request.headers.get("X-Anon-Key", "") or ""
+
+
+def _work_role(work, user):
+    """返回 'owner' | 'writer' | 'reader' | None。
+    owner: 作者本人（注册用户本人 / anon_key 持有者）
+    writer: 可写（匿名公开作品对任何人可写：可续写、可改）
+    reader: 可读（公开作品 / 分享链接）"""
+    if not work:
+        return None
+    akey = _anon_key()
+    is_owner = (user and work["owner_type"] == "user" and work["owner_id"] == user["id"]) or \
+               (akey and work["anon_key"] and akey == work["anon_key"])
+    if is_owner:
+        return "owner"
+    if work["is_public"]:
+        return "writer" if work["owner_type"] == "anon" else "reader"
+    share = request.args.get("share", "")
+    if share and work["share_token"] and share == work["share_token"]:
+        return "reader"
+    return None
+
+
+def _work_json(w):
+    return {
+        "id": w["id"], "sutra_id": w["sutra_id"], "title": w["title"],
+        "font_id": w["font_id"], "owner_type": w["owner_type"],
+        "is_public": bool(w["is_public"]), "has_audio": bool(w["audio_path"]),
+        "chars_total": w["chars_total"], "chars_done": w["chars_done"],
+        "created_at": w["created_at"], "updated_at": w["updated_at"],
+    }
+
+
+@app.route("/api/works", methods=["POST"])
+def work_create():
+    data = request.get_json(silent=True) or {}
+    sutra_id = (data.get("sutra_id") or "").strip()
+    font_id = (data.get("font_id") or "").strip()
+    if not sutra_id:
+        return jsonify({"ok": False, "message": "缺少 sutra_id"}), 400
+    conn = get_db()
+    s = conn.execute("SELECT title, full_text FROM sutras WHERE id = ?", (sutra_id,)).fetchone()
+    if not s:
+        conn.close()
+        return jsonify({"ok": False, "message": "经文不存在"}), 404
+    total = len((s["full_text"] or "").replace("\n", "").replace(" ", "").replace("\r", ""))
+    user = current_user()
+    if user:
+        conn.execute(
+            """INSERT INTO works (sutra_id, title, font_id, owner_type, owner_id, is_public, chars_total)
+               VALUES (?, ?, ?, 'user', ?, 0, ?)""",
+            (sutra_id, s["title"], font_id, user["id"], total),
+        )
+        wid = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+        conn.commit()
+        w = conn.execute("SELECT * FROM works WHERE id = ?", (wid,)).fetchone()
+        conn.close()
+        return jsonify({"ok": True, "work": _work_json(w)})
+    akey = _anon_key() or secrets.token_urlsafe(16)
+    conn.execute(
+        """INSERT INTO works (sutra_id, title, font_id, owner_type, anon_key, is_public, chars_total)
+           VALUES (?, ?, ?, 'anon', ?, 1, ?)""",
+        (sutra_id, s["title"], font_id, akey, total),
+    )
+    wid = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    conn.commit()
+    w = conn.execute("SELECT * FROM works WHERE id = ?", (wid,)).fetchone()
+    conn.close()
+    j = _work_json(w)
+    j["anon_key"] = akey
+    return jsonify({"ok": True, "work": j})
+
+
+@app.route("/api/works", methods=["GET"])
+def work_list_public():
+    """公开画廊：最近更新的公开作品。"""
+    limit = max(1, min(60, int(request.args.get("limit", 24))))
+    conn = get_db()
+    rows = conn.execute(
+        """SELECT * FROM works WHERE is_public = 1
+           ORDER BY updated_at DESC LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return jsonify({"ok": True, "works": [_work_json(w) for w in rows]})
+
+
+@app.route("/api/my/works", methods=["GET"])
+def work_list_mine():
+    """我的作品：注册用户按 user_id；匿名按 X-Anon-Key。"""
+    user = current_user()
+    akey = _anon_key()
+    conn = get_db()
+    if user:
+        rows = conn.execute(
+            "SELECT * FROM works WHERE owner_type='user' AND owner_id=? ORDER BY updated_at DESC",
+            (user["id"],),
+        ).fetchall()
+    elif akey:
+        rows = conn.execute(
+            "SELECT * FROM works WHERE owner_type='anon' AND anon_key=? ORDER BY updated_at DESC",
+            (akey,),
+        ).fetchall()
+    else:
+        conn.close()
+        return jsonify({"ok": True, "works": []})
+    conn.close()
+    return jsonify({"ok": True, "works": [_work_json(w) for w in rows]})
+
+
+@app.route("/api/works/<int:wid>", methods=["GET"])
+def work_get(wid):
+    conn = get_db()
+    w = conn.execute("SELECT * FROM works WHERE id = ?", (wid,)).fetchone()
+    role = _work_role(w, current_user())
+    if not role:
+        conn.close()
+        return jsonify({"ok": False, "message": "作品不存在或无权查看"}), 404
+    chars = conn.execute(
+        "SELECT pos, ch, pen, strokes FROM work_chars WHERE work_id = ? ORDER BY pos",
+        (wid,),
+    ).fetchall()
+    conn.close()
+    out = []
+    for c in chars:
+        try:
+            strokes = json.loads(c["strokes"])
+        except Exception:
+            strokes = {}
+        out.append({"pos": c["pos"], "ch": c["ch"], "pen": c["pen"], "strokes": strokes})
+    j = _work_json(w)
+    j["role"] = role
+    return jsonify({"ok": True, "work": j, "chars": out})
+
+
+@app.route("/api/works/<int:wid>/chars", methods=["PUT"])
+def work_save_char(wid):
+    """保存一个字（最小存储单位）。匿名公开作品任何人可写；私有作品仅作者。"""
+    data = request.get_json(silent=True) or {}
+    try:
+        pos = int(data.get("pos"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "缺少 pos"}), 400
+    ch = (data.get("ch") or "")[:4]
+    pen = (data.get("pen") or "")[:16]
+    strokes = data.get("strokes")
+    if not isinstance(strokes, dict):
+        return jsonify({"ok": False, "message": "strokes 非法"}), 400
+    blob = json.dumps(strokes, separators=(",", ":"), ensure_ascii=False)
+    if len(blob) > 500 * 1024:
+        return jsonify({"ok": False, "message": "笔画数据过大"}), 413
+    conn = get_db()
+    w = conn.execute("SELECT * FROM works WHERE id = ?", (wid,)).fetchone()
+    role = _work_role(w, current_user())
+    if role not in ("owner", "writer"):
+        conn.close()
+        return jsonify({"ok": False, "message": "无权修改"}), 403
+    conn.execute(
+        """INSERT INTO work_chars (work_id, pos, ch, pen, strokes, updated_at)
+           VALUES (?, ?, ?, ?, ?, datetime('now'))
+           ON CONFLICT(work_id, pos) DO UPDATE
+           SET ch=excluded.ch, pen=excluded.pen, strokes=excluded.strokes,
+               updated_at=datetime('now')""",
+        (wid, pos, ch, pen, blob),
+    )
+    conn.execute(
+        """UPDATE works SET chars_done = (SELECT COUNT(*) FROM work_chars WHERE work_id = ?),
+                              updated_at = datetime('now') WHERE id = ?""",
+        (wid, wid),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/works/<int:wid>/chars/<int:pos>", methods=["DELETE"])
+def work_delete_char(wid, pos):
+    conn = get_db()
+    w = conn.execute("SELECT * FROM works WHERE id = ?", (wid,)).fetchone()
+    role = _work_role(w, current_user())
+    if role not in ("owner", "writer"):
+        conn.close()
+        return jsonify({"ok": False, "message": "无权修改"}), 403
+    conn.execute("DELETE FROM work_chars WHERE work_id = ? AND pos = ?", (wid, pos))
+    conn.execute(
+        """UPDATE works SET chars_done = (SELECT COUNT(*) FROM work_chars WHERE work_id = ?),
+                              updated_at = datetime('now') WHERE id = ?""",
+        (wid, wid),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/works/<int:wid>", methods=["DELETE"])
+def work_delete(wid):
+    conn = get_db()
+    w = conn.execute("SELECT * FROM works WHERE id = ?", (wid,)).fetchone()
+    if _work_role(w, current_user()) != "owner":
+        conn.close()
+        return jsonify({"ok": False, "message": "无权删除"}), 403
+    conn.execute("DELETE FROM work_chars WHERE work_id = ?", (wid,))
+    if w["audio_path"]:
+        try:
+            os.remove(os.path.join(AUDIO_DIR, os.path.basename(w["audio_path"])))
+        except OSError:
+            pass
+    conn.execute("DELETE FROM works WHERE id = ?", (wid,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/works/<int:wid>/share", methods=["POST"])
+def work_share(wid):
+    """注册用户生成分享链接（#w=…&share=…）。"""
+    user, err = require_user()
+    if err:
+        return err
+    conn = get_db()
+    w = conn.execute("SELECT * FROM works WHERE id = ?", (wid,)).fetchone()
+    if not w or not (w["owner_type"] == "user" and w["owner_id"] == user["id"]):
+        conn.close()
+        return jsonify({"ok": False, "message": "无权分享"}), 403
+    token = w["share_token"] or secrets.token_urlsafe(16)
+    conn.execute("UPDATE works SET share_token = ? WHERE id = ?", (token, wid))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "share_token": token})
+
+
+@app.route("/api/works/<int:wid>/audio", methods=["POST"])
+def work_audio_upload(wid):
+    conn = get_db()
+    w = conn.execute("SELECT * FROM works WHERE id = ?", (wid,)).fetchone()
+    role = _work_role(w, current_user())
+    if role not in ("owner", "writer"):
+        conn.close()
+        return jsonify({"ok": False, "message": "无权上传"}), 403
+    if "audio" not in request.files:
+        conn.close()
+        return jsonify({"ok": False, "message": "没有音频文件"}), 400
+    f = request.files["audio"]
+    name = f"work_{wid}.webm"
+    f.save(os.path.join(AUDIO_DIR, name))
+    conn.execute("UPDATE works SET audio_path = ?, updated_at = datetime('now') WHERE id = ?",
+                 (name, wid))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/works/<int:wid>/audio", methods=["GET"])
+def work_audio_get(wid):
+    conn = get_db()
+    w = conn.execute("SELECT * FROM works WHERE id = ?", (wid,)).fetchone()
+    role = _work_role(w, current_user())
+    conn.close()
+    if not role or not w["audio_path"]:
+        return jsonify({"ok": False, "message": "无音频"}), 404
+    return send_from_directory(AUDIO_DIR, os.path.basename(w["audio_path"]),
+                               mimetype="audio/webm")
 
 
 @app.route("/api/upload", methods=["POST"])

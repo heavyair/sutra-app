@@ -40,6 +40,8 @@
     workImages: [],
     flowToken: 0,
     completing: false,
+    work: null,        // 当前作品（服务端）：{id, anon_key, ...}
+    workData: null,    // 作品查看器数据：{work, chars}
     pauses: [],        // 笔画间停顿时长（ms），用于学习书写节奏
     pendingTimer: 0,   // 完成判定的延迟计时器
     punctTimer: 0,     // 标点自动跳过的展示计时器
@@ -99,10 +101,19 @@
       s.classList.toggle('active', s.id === id);
     });
     window.scrollTo(0, 0);
+    if (id === 'screen-library') refreshLibraryWorks();
   }
 
   function getToken() {
     try { return localStorage.getItem('sutra_token'); } catch (e) { return null; }
+  }
+
+  function getAnonKey() {
+    try { return localStorage.getItem('sutra_anon_key') || ''; } catch (e) { return ''; }
+  }
+  function saveAnonKey(k) {
+    if (!k) return;
+    try { localStorage.setItem('sutra_anon_key', k); } catch (e) {}
   }
 
   function api(path, opts) {
@@ -110,6 +121,8 @@
     var headers = { 'Content-Type': 'application/json' };
     var token = getToken();
     if (token) headers['Authorization'] = 'Bearer ' + token;
+    var ak = getAnonKey();
+    if (ak) headers['X-Anon-Key'] = ak;
     return fetch(path, Object.assign({ headers: headers }, opts)).then(function (r) {
       return r.json().then(function (body) {
         if (r.status === 401 && body && body.need_auth && !opts.noAuthRedirect) {
@@ -352,6 +365,8 @@
       state.charIndex = 0;
       state.workImages = [];
       state.completing = false;
+      state.work = null;      // 新开一部作品（懒创建）
+      state.workData = null;
       state.flowToken++;
       renderFontCards($('font-cards'), state.font.id, function (f) { state.font = f; });
       music.setConfig(res.sutra.music_config || {});
@@ -484,11 +499,50 @@
     var first = $('pen-picker').dataset.first === '1';
     $('pen-picker').classList.add('hidden');
     if (first) {
-      // 开乐：用户手势链中，可直接启动 AudioContext
+      // 开乐：用户手势链中，可直接启动 AudioContext；同时开始录制写字音乐
       if (!state.musicOn) { music.start(); state.musicOn = true; }
+      try { music.startRecording(); } catch (e) {}
       beginChar();
     }
   });
+
+  /* ---------- 作品（服务端逐字存储） ---------- */
+  // 懒创建：写下第一个字时才建作品，避免空作品堆积
+  function ensureWork(cb) {
+    if (state.work && state.work.id) { if (cb) cb(); return; }
+    api('/api/works', {
+      method: 'POST',
+      body: JSON.stringify({ sutra_id: state.sutra.id, font_id: state.font.id })
+    }).then(function (res) {
+      if (res && res.ok && res.work) {
+        state.work = res.work;
+        if (res.work.anon_key) saveAnonKey(res.work.anon_key);
+      }
+      if (cb) cb();
+    }).catch(function () { if (cb) cb(); });
+  }
+
+  // 每个字写完即存：最小存储单位 = 一个字（含落笔记录，可回放）
+  function saveCharToServer() {
+    var doSave = function () {
+      if (!state.work || !state.work.id) return;
+      var rec = pad.getCharRecord();
+      var strokes = (rec.strokes && rec.strokes.length)
+        ? rec
+        : { pen: rec.pen, auto: 'punct', strokes: [] };
+      api('/api/works/' + state.work.id + '/chars', {
+        method: 'PUT',
+        body: JSON.stringify({
+          pos: state.charIndex,
+          ch: state.chars[state.charIndex],
+          pen: state.pen.id,
+          strokes: strokes
+        })
+      }).catch(function () {});
+    };
+    if (state.work && state.work.id) doSave();
+    else ensureWork(doSave);
+  }
 
   /* ---------- 7. 全屏单字临摹 ---------- */
   function ensurePad() {
@@ -561,6 +615,7 @@
     var img = pad.snapshot();
     if (img) state.workImages.push(img);
     updateProgress();
+    saveCharToServer();
     state.charIndex++;
     if (state.charIndex >= state.chars.length) {
       showDone();
@@ -577,6 +632,7 @@
     var img = pad.snapshot();
     state.workImages.push(img);
     updateProgress();
+    saveCharToServer();
 
     // 缓缓隐藏，同时给"继续改写"
     $('btn-keep-editing').classList.remove('hidden');
@@ -615,6 +671,10 @@
       state.completing = false;
       state.workImages.pop();
       updateProgress();
+      // 刚存进服务端的字也删掉
+      if (state.work && state.work.id) {
+        api('/api/works/' + state.work.id + '/chars/' + state.charIndex, { method: 'DELETE' }).catch(function () {});
+      }
     }
     pad.cancelFade();
     pad.clearInk();
@@ -652,6 +712,7 @@
       if (t === 'sutra') {
         state.flowToken++;
         if (state.musicOn) { music.stop(); state.musicOn = false; }
+        try { music.stopRecording(); } catch (e) {}
         showScreen('screen-library');
       } else if (t === 'font') {
         renderFontCards($('font-cards-2'), state.font.id, function (f) {
@@ -700,6 +761,21 @@
       '《' + state.sutra.title + '》 · 共 ' + state.chars.length + ' 字 · ' +
       d.getFullYear() + ' 年 ' + (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日';
     $('done-overlay').classList.remove('hidden');
+    // 写字时生成的音乐：录制收尾并随作品保存
+    try {
+      music.stopRecording(function (blob) {
+        if (!blob || !blob.size || !state.work || !state.work.id) return;
+        var fd = new FormData();
+        fd.append('audio', blob, 'music.webm');
+        var headers = {};
+        var ak = getAnonKey();
+        if (ak) headers['X-Anon-Key'] = ak;
+        var t = getToken();
+        if (t) headers['Authorization'] = 'Bearer ' + t;
+        fetch('/api/works/' + state.work.id + '/audio', { method: 'POST', headers: headers, body: fd })
+          .catch(function () {});
+      });
+    } catch (e) {}
   }
 
   $('btn-done-view').addEventListener('click', function () {
@@ -765,6 +841,206 @@
     buildPrintSheet();
     setTimeout(function () { window.print(); }, 300);
   }
+
+  /* ---------- 11.5 作品查看：画廊 / 我的 / 回放 / 续写 ---------- */
+  function fmtTime(s) {
+    if (!s) return '';
+    return String(s).slice(0, 16).replace('T', ' ');
+  }
+
+  function renderWorkCards(el, works, mine) {
+    el.innerHTML = '';
+    if (!works.length) {
+      el.innerHTML = '<div class="work-empty-hint">' +
+        (mine ? '还没有作品，去抄一段经吧。' : '还没有公开作品。') + '</div>';
+      return;
+    }
+    works.forEach(function (w) {
+      var b = document.createElement('button');
+      b.className = 'work-card';
+      var pct = w.chars_total ? Math.round(w.chars_done / w.chars_total * 100) : 0;
+      b.innerHTML =
+        '<div class="wc-title">《' + escapeHtml(w.title || '') + '》</div>' +
+        '<div class="wc-meta">' + w.chars_done + ' / ' + w.chars_total + ' 字 · ' +
+        fmtTime(w.updated_at) + (w.owner_type === 'anon' ? ' · 匿名' : '') + '</div>' +
+        '<div class="wc-bar"><i style="width:' + pct + '%"></i></div>';
+      b.addEventListener('click', function () { openWork(w.id); });
+      el.appendChild(b);
+    });
+  }
+
+  function refreshLibraryWorks() {
+    api('/api/my/works').then(function (res) {
+      var works = (res && res.ok && res.works) || [];
+      $('my-works-title').style.display = works.length ? '' : 'none';
+      renderWorkCards($('my-works'), works, true);
+    }).catch(function () {});
+    api('/api/works?limit=24').then(function (res) {
+      renderWorkCards($('public-works'), (res && res.ok && res.works) || [], false);
+    }).catch(function () {});
+  }
+
+  // 打开作品：viewer（只读/续写），share 为分享 token 时只读
+  function openWork(wid, share) {
+    var url = '/api/works/' + wid + (share ? '?share=' + encodeURIComponent(share) : '');
+    api(url).then(function (res) {
+      if (!res || !res.ok) { alert('打不开这个作品'); return; }
+      api('/api/sutra/' + encodeURIComponent(res.work.sutra_id)).then(function (sr) {
+        if (!sr || !sr.ok || !sr.sutra) { alert('经文数据缺失'); return; }
+        state.sutra = sr.sutra;
+        state.chars = (sr.sutra.full_text || '').replace(/\s+/g, '').split('');
+        var f = FONTS.filter(function (x) { return x.id === res.work.font_id; })[0] || FONTS[0];
+        state.font = f;
+        state.work = res.work;
+        state.workData = res;
+        renderWorkView(res, share);
+        showScreen('screen-work');
+      });
+    }).catch(function () { alert('网络异常'); });
+  }
+
+  function renderWorkView(res, share) {
+    var w = res.work;
+    $('workview-title').textContent = '《' + (w.title || '') + '》';
+    $('workview-meta').textContent =
+      w.chars_done + ' / ' + w.chars_total + ' 字 · ' + fmtTime(w.updated_at) +
+      (w.owner_type === 'anon' ? ' · 匿名公开，可续写' : '');
+    // 音乐：写字时录下的
+    var au = $('workview-audio');
+    if (w.has_audio) {
+      au.style.display = '';
+      au.src = '/api/works/' + w.id + '/audio' + (share ? '?share=' + encodeURIComponent(share) : '');
+    } else {
+      au.style.display = 'none';
+      au.removeAttribute('src');
+    }
+    var byPos = {};
+    res.chars.forEach(function (c) { byPos[c.pos] = c; });
+    state.workCharsByPos = byPos;
+    // 字格：写过的字可点回放，没写的显示淡字
+    var grid = $('workview-grid');
+    grid.innerHTML = '';
+    var fontStack = state.font.stack;
+    for (var i = 0; i < state.chars.length; i++) {
+      (function (pos) {
+        var cell = document.createElement('div');
+        var saved = byPos[pos];
+        cell.className = 'wv-cell' + (saved ? ' done' : ' todo');
+        cell.style.fontFamily = fontStack;
+        cell.textContent = state.chars[pos];
+        if (saved) {
+          cell.title = '点击回放第 ' + (pos + 1) + ' 字';
+          cell.addEventListener('click', function () { openReplay(pos); });
+        }
+        grid.appendChild(cell);
+      })(i);
+    }
+    // 按钮：续写（写完则隐藏）；分享/删除仅作者
+    var finished = w.chars_done >= w.chars_total && w.chars_total > 0;
+    $('btn-workview-continue').style.display = finished ? 'none' : '';
+    var isOwner = w.role === 'owner';
+    $('btn-workview-share').style.display = (isOwner && getToken()) ? '' : 'none';
+    $('btn-workview-delete').style.display = isOwner ? '' : 'none';
+  }
+
+  $('btn-workview-back').addEventListener('click', function () {
+    state.flowToken++;
+    showScreen('screen-library');
+  });
+
+  // 续写：从第一个没写的字进入（跳过开场，直达书写）
+  $('btn-workview-continue').addEventListener('click', function () {
+    var res = state.workData;
+    if (!res) return;
+    var byPos = state.workCharsByPos || {};
+    var idx = 0;
+    while (idx < state.chars.length && byPos[idx]) idx++;
+    if (idx >= state.chars.length) { alert('已经写完了'); return; }
+    state.charIndex = idx;
+    state.workImages = [];
+    startWritingDirect();
+  });
+
+  function startWritingDirect() {
+    state.flowToken++;
+    showScreen('screen-write');
+    closeTools();
+    hideOverlays();
+    ensurePad();
+    pad.setFont(state.font.stack);
+    pad.setPen(state.pen.id);
+    if (!state.musicOn) { music.start(); state.musicOn = true; }
+    try { music.startRecording(); } catch (e) {}
+    beginChar();
+  }
+
+  $('btn-workview-share').addEventListener('click', function () {
+    var w = state.workData && state.workData.work;
+    if (!w) return;
+    api('/api/works/' + w.id + '/share', { method: 'POST' }).then(function (res) {
+      if (!res || !res.ok) { alert(res && res.message || '分享失败'); return; }
+      var url = location.origin + location.pathname + '#w=' + w.id + '&share=' + res.share_token;
+      var done = function () { alert('分享链接已复制，发给朋友即可查看'); };
+      if (navigator.clipboard) navigator.clipboard.writeText(url).then(done, function () { prompt('复制分享链接：', url); });
+      else prompt('复制分享链接：', url);
+    }).catch(function () { alert('网络异常'); });
+  });
+
+  $('btn-workview-delete').addEventListener('click', function () {
+    var w = state.workData && state.workData.work;
+    if (!w || !confirm('确定删除这个作品吗？')) return;
+    api('/api/works/' + w.id, { method: 'DELETE' }).then(function (res) {
+      if (res && res.ok) showScreen('screen-library');
+      else alert('删除失败');
+    });
+  });
+
+  /* ---------- 回放：重演一字的落笔过程 ---------- */
+  var replayPad = null;
+  var replayPos = -1;
+
+  function openReplay(pos) {
+    var saved = (state.workCharsByPos || {})[pos];
+    if (!saved) return;
+    replayPos = pos;
+    var ch = state.chars[pos];
+    $('replay-label').textContent = '第 ' + (pos + 1) + ' 字 · ' + ch;
+    $('replay-overlay').classList.remove('hidden');
+    if (!replayPad) replayPad = new WritingPad($('replay-paper'), $('replay-ink'), {});
+    var doPlay = function () {
+      replayPad.setFont(state.font.stack);
+      replayPad.newChar(ch);
+      var rec = saved.strokes || {};
+      if (rec.auto === 'punct') {
+        replayPad.stampChar(ch);
+      } else {
+        replayPad.replayStrokes(rec.strokes ? rec : { pen: saved.pen, strokes: [] });
+      }
+    };
+    try {
+      var fam = state.font.web ? state.font.web.split(' ').slice(1).join(' ') : null;
+      if (document.fonts && fam) document.fonts.load(state.font.web, ch).then(doPlay, doPlay);
+      else doPlay();
+    } catch (e) { doPlay(); }
+  }
+
+  function closeReplay() {
+    if (replayPad) replayPad.cancelReplay();
+    $('replay-overlay').classList.add('hidden');
+    replayPos = -1;
+  }
+  $('btn-replay-close').addEventListener('click', closeReplay);
+  $('btn-replay-again').addEventListener('click', function () {
+    if (replayPos >= 0) openReplay(replayPos);
+  });
+
+  /* ---------- 分享链接直达：#w=123&share=xxx ---------- */
+  (function () {
+    var m = location.hash.match(/#w=(\d+)(?:&share=([^&]+))?/);
+    if (m) {
+      setTimeout(function () { openWork(m[1], m[2]); }, 600);
+    }
+  })();
 
   /* ---------- 12. 分享 ---------- */
   function shareWork() {

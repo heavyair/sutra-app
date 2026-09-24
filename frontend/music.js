@@ -191,5 +191,49 @@
     });
   };
 
+  /* 录制：把写字时生成的音乐录下来，随作品一起保留 */
+  MusicEngine.prototype.startRecording = function () {
+    try {
+      this._ensureCtx();
+      if (!this._recDest) {
+        this._recDest = this.ctx.createMediaStreamDestination();
+        this.master.connect(this._recDest);
+      }
+      var MR = global.MediaRecorder;
+      if (!MR) return false;
+      var rec = new MR(this._recDest.stream);
+      var chunks = [];
+      var self = this;
+      rec.ondataavailable = function (e) {
+        if (e.data && e.data.size) chunks.push(e.data);
+      };
+      rec.onstop = function () {
+        var cb = self._recCb;
+        self._recCb = null;
+        self._recorder = null;
+        var blob = null;
+        try { blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' }); } catch (e) {}
+        if (cb) cb(blob);
+      };
+      rec.start(1000);
+      this._recorder = rec;
+      this._recCb = null;
+      return true;
+    } catch (e) { return false; }
+  };
+
+  MusicEngine.prototype.stopRecording = function (cb) {
+    this._recCb = cb || null;
+    try {
+      if (this._recorder && this._recorder.state !== 'inactive') {
+        this._recorder.stop();
+        return;
+      }
+    } catch (e) {}
+    this._recorder = null;
+    var f = this._recCb; this._recCb = null;
+    if (f) f(null);
+  };
+
   global.MusicEngine = MusicEngine;
 })(window);

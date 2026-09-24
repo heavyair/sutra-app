@@ -185,6 +185,10 @@
     this.cancelFade();
     this.ink.style.opacity = '1';
     this.clearInk();
+    // 落笔记录：每个字从空白开始累积，供存储与回放
+    this._recStrokes = [];
+    this._recStroke = null;
+    this._charT0 = Date.now();
     this._drawPaper();
     // 按当前虚影字的实际显示大小校准毛笔笔锋
     if (this.bbox) this._setBrushScale(Math.max(this.bbox.w, this.bbox.h));
@@ -277,6 +281,8 @@
       self._downX = dp.x;
       self._downY = dp.y;
       self.points = [dp];
+      self._recStroke = [];                       // 新一笔的落笔记录
+      self._recSize = self._sizeOf(self.ink);      // 记录时的画布尺寸（归一化用）
       try { self.ink.setPointerCapture(e.pointerId); } catch (err) {}
       if (self.opts.onStrokeStart) self.opts.onStrokeStart();
       if (self.strokeCount === 0 && self.opts.onFirstStroke) self.opts.onFirstStroke();
@@ -308,11 +314,22 @@
       self.inkLength += segLen;
       self._drawSegment(last, p, w);
       self._markCells(last, p, w);
+      // 落笔记录：归一化坐标 + 相对时间 + 归一化笔宽（回放时还原）
+      var rs = self._recSize || (self._recSize = self._sizeOf(self.ink));
+      var unit = Math.min(rs.w, rs.h) || 1;
+      self._recStroke.push([
+        +((p.x / rs.w).toFixed(4)),
+        +((p.y / rs.h).toFixed(4)),
+        Math.round(p.t - (self._charT0 || p.t)),
+        +((w / unit).toFixed(5))
+      ]);
     });
     function end() {
       if (!self.drawing) return;
       self.drawing = false;
       self.strokeCount++;
+      if (self._recStroke && self._recStroke.length >= 2) self._recStrokes.push(self._recStroke);
+      self._recStroke = null;
       if (self.opts.onStrokeEnd) self.opts.onStrokeEnd(self.coverage(), self.strokeCount);
     }
     this.ink.addEventListener('pointerup', end);
@@ -450,5 +467,65 @@
     ctx.textBaseline = 'middle';
     ctx.fillText(ch, s.w / 2, s.h * 0.44);
     ctx.restore();
+  };
+
+  // 取出当前字的落笔记录（最小存储单位）：{ pen, strokes: [[[x,y,t,w]...]] }
+  // x,y 为相对画布的 0~1 坐标；t 为相对本字首笔的毫秒；w 为相对画布短边的笔宽
+  WritingPad.prototype.getCharRecord = function () {
+    return { pen: this.pen, strokes: this._recStrokes || [] };
+  };
+
+  // 回放落笔记录：按原时间节奏重画（过长则加速，上限 maxMs）
+  WritingPad.prototype.replayStrokes = function (rec, opts) {
+    opts = opts || {};
+    var self = this;
+    this.cancelReplay();
+    this.setPen(rec.pen || 'maobi');
+    this.clearInk();
+    this._bristlePhase = Math.random() * Math.PI * 2;
+    this._bristleDist = 0;
+    var s = this._sizeOf(this.ink);
+    var unit = Math.min(s.w, s.h) || 1;
+    var segs = [];
+    (rec.strokes || []).forEach(function (st) {
+      for (var i = 1; i < st.length; i++) segs.push([st[i - 1], st[i]]);
+    });
+    if (!segs.length) { if (opts.onDone) opts.onDone(); return; }
+    var t0 = segs[0][0][2];
+    var span = Math.max(1, segs[segs.length - 1][1][2] - t0);
+    var maxMs = opts.maxMs || 8000;
+    var scale = span > maxMs ? maxMs / span : 1;
+    var raf = global.requestAnimationFrame ||
+      function (fn) { return setTimeout(function () { fn(Date.now()); }, 16); };
+    var i = 0, start = null;
+    function frame(now) {
+      if (start === null) start = now;
+      var el = (now - start) / scale;
+      var guard = 0;
+      while (i < segs.length && (segs[i][1][2] - t0) <= el && guard++ < 5000) {
+        var a = segs[i][0], b = segs[i][1];
+        self._drawSegment(
+          { x: a[0] * s.w, y: a[1] * s.h },
+          { x: b[0] * s.w, y: b[1] * s.h },
+          b[3] * unit
+        );
+        i++;
+      }
+      if (i < segs.length) {
+        self._replayRaf = raf(frame);
+      } else {
+        self._replayRaf = 0;
+        if (opts.onDone) opts.onDone();
+      }
+    }
+    self._replayRaf = raf(frame);
+  };
+
+  WritingPad.prototype.cancelReplay = function () {
+    if (this._replayRaf) {
+      if (global.cancelAnimationFrame) global.cancelAnimationFrame(this._replayRaf);
+      else clearTimeout(this._replayRaf);
+      this._replayRaf = 0;
+    }
   };
 })(window);

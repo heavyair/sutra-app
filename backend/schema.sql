@@ -59,3 +59,37 @@ CREATE TABLE IF NOT EXISTS copy_progress (
   updated_at  TEXT DEFAULT (datetime('now')),
   UNIQUE (sutra_id, user_id)
 );
+
+-- works: 抄经作品（一部作品 = 一次抄经）
+--   匿名作品公开，任何人可看可续写可改；注册用户作品默认私有，可分享
+CREATE TABLE IF NOT EXISTS works (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  sutra_id    TEXT NOT NULL,
+  title       TEXT,
+  font_id     TEXT,
+  owner_type  TEXT NOT NULL DEFAULT 'anon',  -- 'anon' | 'user'
+  owner_id    INTEGER,
+  anon_key    TEXT,                          -- 匿名作者的认领 key（存浏览器 localStorage）
+  is_public   INTEGER NOT NULL DEFAULT 1,
+  share_token TEXT,                          -- 注册用户分享链接 token
+  audio_path  TEXT,                          -- 写字时录制的音乐文件
+  chars_total INTEGER DEFAULT 0,
+  chars_done  INTEGER DEFAULT 0,
+  created_at  TEXT DEFAULT (datetime('now')),
+  updated_at  TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_works_owner ON works(owner_type, owner_id);
+CREATE INDEX IF NOT EXISTS idx_works_public ON works(is_public, updated_at);
+
+-- work_chars: 每个字最小存储单位，保留落笔记录，可回放
+CREATE TABLE IF NOT EXISTS work_chars (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  work_id    INTEGER NOT NULL,
+  pos        INTEGER NOT NULL,
+  ch         TEXT NOT NULL,
+  pen        TEXT,
+  strokes    TEXT NOT NULL,   -- JSON：{pen, strokes:[[[x,y,t,w]...]]} 或 {auto:'punct'}
+  updated_at TEXT DEFAULT (datetime('now')),
+  UNIQUE (work_id, pos)
+);
+CREATE INDEX IF NOT EXISTS idx_work_chars_work ON work_chars(work_id);
