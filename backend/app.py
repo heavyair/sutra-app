@@ -201,6 +201,18 @@ def migrate_works():
         """UPDATE works SET dedication_expires_at = datetime(dedicated_at, '+7 days')
            WHERE dedicated_at IS NOT NULL AND dedication_expires_at IS NULL"""
     )
+    # 最后书写者：公开作品的最后书写者可回向（幂等补列；存量按作者回填）
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(works)").fetchall()]
+    if "last_writer_type" not in cols:
+        conn.execute("ALTER TABLE works ADD COLUMN last_writer_type TEXT")
+    if "last_writer_id" not in cols:
+        conn.execute("ALTER TABLE works ADD COLUMN last_writer_id INTEGER")
+    if "last_writer_anon" not in cols:
+        conn.execute("ALTER TABLE works ADD COLUMN last_writer_anon TEXT")
+    conn.execute(
+        """UPDATE works SET last_writer_type = owner_type, last_writer_id = owner_id,
+               last_writer_anon = anon_key WHERE last_writer_type IS NULL"""
+    )
     conn.execute(
         """CREATE TABLE IF NOT EXISTS work_chars (
              id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -732,6 +744,30 @@ def _work_role(work, user):
     return None
 
 
+def _is_last_writer(work, user):
+    """是否为该作品的最后书写者（写下一字的人）。"""
+    keys = work.keys()
+    t = work["last_writer_type"] if "last_writer_type" in keys else None
+    if t == "user" and user:
+        return work["last_writer_id"] == user["id"]
+    if t == "anon":
+        akey = _anon_key()
+        return bool(akey) and bool(work["last_writer_anon"]) and work["last_writer_anon"] == akey
+    return False
+
+
+def _can_dedicate_work(work):
+    """回向权限：登录作者（原规则），或公开作品的最后书写者（新规则）。"""
+    keys = work.keys()
+    if "dedicated_at" in keys and work["dedicated_at"]:
+        return False
+    user = current_user()
+    role = _work_role(work, user)
+    if role == "owner" and work["owner_type"] == "user" and user:
+        return True
+    return bool(work["is_public"]) and _is_last_writer(work, user)
+
+
 def _work_json(w):
     keys = w.keys()
     farewell_at = w["farewell_at"] if "farewell_at" in keys else None
@@ -757,6 +793,7 @@ def _work_json(w):
         "dedication_text": w["dedication_text"] if "dedication_text" in keys else None,
         "dedication_kind": w["dedication_kind"] if "dedication_kind" in keys else None,
         "ash_cells": _parse_ash(w["ash_cells"]) if "ash_cells" in keys else [],
+        "can_dedicate": _can_dedicate_work(w),
     }
 
 
@@ -784,9 +821,10 @@ def work_create():
     user = current_user()
     if user:
         conn.execute(
-            """INSERT INTO works (sutra_id, title, font_id, owner_type, owner_id, is_public, chars_total)
-               VALUES (?, ?, ?, 'user', ?, 0, ?)""",
-            (sutra_id, s["title"], font_id, user["id"], total),
+            """INSERT INTO works (sutra_id, title, font_id, owner_type, owner_id, is_public, chars_total,
+                                  last_writer_type, last_writer_id)
+               VALUES (?, ?, ?, 'user', ?, 0, ?, 'user', ?)""",
+            (sutra_id, s["title"], font_id, user["id"], total, user["id"]),
         )
         wid = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
         conn.commit()
@@ -795,9 +833,10 @@ def work_create():
         return jsonify({"ok": True, "work": _work_json(w)})
     akey = _anon_key() or secrets.token_urlsafe(16)
     conn.execute(
-        """INSERT INTO works (sutra_id, title, font_id, owner_type, anon_key, is_public, chars_total)
-           VALUES (?, ?, ?, 'anon', ?, 1, ?)""",
-        (sutra_id, s["title"], font_id, akey, total),
+        """INSERT INTO works (sutra_id, title, font_id, owner_type, anon_key, is_public, chars_total,
+                              last_writer_type, last_writer_anon)
+           VALUES (?, ?, ?, 'anon', ?, 1, ?, 'anon', ?)""",
+        (sutra_id, s["title"], font_id, akey, total, akey),
     )
     wid = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
     conn.commit()
@@ -918,6 +957,20 @@ def work_save_char(wid):
                               farewell_at = NULL, farewell_mode = NULL WHERE id = ?""",
         (wid, wid),
     )
+    # 记录最后书写者：公开作品的最后书写者可回向
+    _me = current_user()
+    _ak = _anon_key()
+    if _me:
+        conn.execute(
+            "UPDATE works SET last_writer_type = 'user', last_writer_id = ?, last_writer_anon = NULL WHERE id = ?",
+            (_me["id"], wid),
+        )
+    elif _ak:
+        conn.execute(
+            "UPDATE works SET last_writer_type = 'anon', last_writer_id = NULL, last_writer_anon = ? WHERE id = ?",
+            (_ak, wid),
+        )
+    # 无身份（未带 key 的续写）：保持原最后书写者不变
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
@@ -1091,23 +1144,21 @@ DEDICATION_KINDS = {"huixiangji": "回向偈", "puxian": "普贤回向",
 
 @app.route("/api/works/<int:wid>/dedicate", methods=["POST"])
 def work_dedicate(wid):
-    """回向：仅登录作者。生成回向文；字迹化烟（删逐字笔画与录音），
-    留灰尘格与回向文作纪念；清除焚化安排（清理脚本只看 farewell_at）。"""
-    user, err = require_user()
-    if err:
-        return err
+    """回向：登录作者（原规则），或公开作品的最后书写者。
+    生成回向文；字迹化烟（删逐字笔画与录音），留灰尘格与回向文作纪念；
+    清除焚化安排（清理脚本只看 farewell_at）。"""
     conn = get_db()
     w = conn.execute("SELECT * FROM works WHERE id = ?", (wid,)).fetchone()
-    if not w or _work_role(w, user) != "owner":
+    if not w:
         conn.close()
-        return jsonify({"ok": False, "message": "仅作者可回向"}), 403
-    if w["owner_type"] != "user":
-        conn.close()
-        return jsonify({"ok": False, "message": "仅登录用户的作品可回向"}), 403
+        return jsonify({"ok": False, "message": "作品不存在"}), 404
     keys = w.keys()
     if "dedicated_at" in keys and w["dedicated_at"]:
         conn.close()
         return jsonify({"ok": False, "message": "已经回向过了"}), 400
+    if not _can_dedicate_work(w):
+        conn.close()
+        return jsonify({"ok": False, "message": "仅作者或最后书写者可回向"}), 403
     data = request.get_json(silent=True) or {}
     target = (data.get("target") or "").strip()[:40] or "法界一切众生"
     kind = data.get("kind")

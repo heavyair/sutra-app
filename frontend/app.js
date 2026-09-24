@@ -1573,7 +1573,7 @@
     var dedicated = !!w.dedicated_at;
     var finished = w.chars_done >= w.chars_total && w.chars_total > 0;
     var isOwner = w.role === 'owner';
-    var canDedicate = isOwner && getToken() && !dedicated && w.chars_done > 0;
+    var canDedicate = w.can_dedicate && !dedicated && w.chars_done > 0;
     var items = [];
     if (!dedicated && !finished) items.push({ label: '续写', onClick: continueWork });
     if (!dedicated && w.chars_done > 0) {
@@ -1637,7 +1637,7 @@
       });
     }
     state.workviewDual.render(cells, state.chars.length, w.title || '');
-    // 功能按钮收拢进全局工具按钮：续写（写完则无）；分享/删除仅作者；回向仅登录作者且未回向
+    // 功能按钮收拢进全局工具按钮：续写（写完则无）；分享/删除仅作者；回向：登录作者或公开作品最后书写者
     setScreenTools(workviewTools());
     if (dedicated) {
       // 纪念态：不可再欣赏（无放映/PDF/回放/续写），展示尘埃与回向文
