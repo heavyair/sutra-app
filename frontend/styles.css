@@ -378,3 +378,20 @@ button:active { transform: scale(0.97); }
 /* 回向文种类选择 */
 .dedicate-kinds { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 4px; }
 .dedicate-kinds .chip.active { background: #8a6d2f; color: #fff; border-color: #8a6d2f; }
+.dedicate-label2 { font-size: 13px; color: #8a6d2f; margin: 10px 0 6px; letter-spacing: 2px; }
+/* 经文库回向计数按钮 */
+.ded-count { margin-top: 8px; padding: 6px 14px; font-size: 13px; border: 1px solid #c9a86a;
+  background: rgba(201,168,106,.12); color: #8a6d2f; border-radius: 999px; letter-spacing: 1px; }
+/* 回向记录墙 */
+.ded-wall { display: flex; flex-direction: column; gap: 14px; padding: 4px 14px 24px; }
+.ded-card { background: linear-gradient(160deg, #f7f1e3, #efe5cf);
+  border: 1px solid #d9c9a3; border-radius: 10px; padding: 14px; }
+.ded-text { font-size: 15px; line-height: 2; color: #4a3b28; letter-spacing: 1px;
+  font-family: "Songti SC", "Noto Serif CJK SC", serif; }
+.ded-ash { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 10px;
+  padding: 8px; background: rgba(60,50,35,.08); border-radius: 6px; }
+.ded-ashcell { width: 16px; height: 16px; border-radius: 3px;
+  background: radial-gradient(circle at 40% 35%, #b9ab8f 0%, #8d7f66 55%, #6e6350 100%);
+  opacity: .85; }
+.ded-ashmore { font-size: 11px; color: #8a6d2f; align-self: center; margin-left: 4px; }
+.ded-foot { margin-top: 8px; font-size: 12px; color: #9a8a6a; letter-spacing: 1px; }

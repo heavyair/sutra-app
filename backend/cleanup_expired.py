@@ -37,9 +37,21 @@ def main():
         conn.execute("DELETE FROM works WHERE id = ?", (wid,))
         removed += 1
         print(f"cremated work {wid}")
+    # 回向记录：7 天无人访问（无续期）的，删除释放存储
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(works)").fetchall()]
+    if "dedication_expires_at" in cols:
+        drows = conn.execute(
+            """SELECT id FROM works
+               WHERE dedicated_at IS NOT NULL
+                 AND dedication_expires_at < datetime('now')"""
+        ).fetchall()
+        for w in drows:
+            conn.execute("DELETE FROM works WHERE id = ?", (w["id"],))
+            removed += 1
+            print(f"expired dedication work {w['id']}")
     conn.commit()
     conn.close()
-    print(f"done: {removed} work(s) cremated")
+    print(f"done: {removed} work(s) removed")
     return 0
 
 

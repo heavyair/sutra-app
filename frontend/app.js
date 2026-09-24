@@ -246,6 +246,9 @@
       witems.push({ label: '经文库', onClick: function () { state.flowToken++; showScreen('screen-library'); } });
       return witems;
     }
+    if (id === 'screen-dedications') {
+      return [{ label: '经文库', onClick: function () { showScreen('screen-library'); } }];
+    }
     return [];
   }
   // 逐字/整纸切换收进工具菜单：按钮文字显示将要切换到的视图
@@ -505,6 +508,17 @@
           '<div class="sutra-title">' + escapeHtml(s.title) + todo + '</div>' +
           '<div class="sutra-meta">' + trad + ' · ' + s.char_count + '字 · ♥ ' + s.like_count + '</div>' +
           '<div class="sutra-intro">' + escapeHtml(s.intro || '') + '</div>';
+        var dc = s.dedication_count || 0;
+        if (dc > 0) {
+          var db = document.createElement('button');
+          db.className = 'ded-count';
+          db.textContent = '🪷 回向 ' + dc;
+          db.addEventListener('click', function (e) {
+            e.stopPropagation();
+            openDedicationWall(s.id, s.title);
+          });
+          li.appendChild(db);
+        }
         li.addEventListener('click', function () {
           if (li.dataset.busy) return;           // 防重复点击
           li.dataset.busy = '1';
@@ -528,6 +542,66 @@
       loadLibrary();
     });
   });
+
+  /* ---------- 3b. 回向记录 ---------- */
+  var DED_KIND_NAMES = { huixiangji: '回向偈', puxian: '普贤回向', pingdeng: '平等回向', xiaozai: '消灾祈福' };
+
+  function openDedicationWall(sutraId, sutraTitle) {
+    state.dedWallSutra = sutraId;
+    $('ded-wall-title').textContent = '🪷 ' + sutraTitle + ' · 回向记录';
+    $('ded-wall').innerHTML = '<div class="picker-hint">加载中…</div>';
+    showScreen('screen-dedications');
+    api('/api/sutra/' + sutraId + '/dedications').then(function (res) {
+      if (!res.ok) { $('ded-wall').innerHTML = '<div class="picker-hint">加载失败</div>'; return; }
+      renderDedicationWall(res.dedications || []);
+    });
+  }
+
+  function renderDedicationWall(list) {
+    var wall = $('ded-wall');
+    wall.innerHTML = '';
+    if (!list.length) {
+      wall.innerHTML = '<div class="picker-hint">尚无回向记录</div>';
+      return;
+    }
+    var note = document.createElement('div');
+    note.className = 'picker-hint';
+    note.textContent = '共 ' + list.length + ' 次回向 · 每条记录有人看即续存 7 天';
+    wall.appendChild(note);
+    list.forEach(function (d) {
+      var card = document.createElement('div');
+      card.className = 'ded-card';
+      var text = document.createElement('div');
+      text.className = 'ded-text';
+      text.textContent = d.dedication_text || '';
+      card.appendChild(text);
+      // 尘埃：灰烬格子条
+      var cells = d.ash_cells || [];
+      var strip = document.createElement('div');
+      strip.className = 'ded-ash';
+      var show = cells.slice(0, 40);
+      show.forEach(function () {
+        var c = document.createElement('div');
+        c.className = 'ded-ashcell';
+        strip.appendChild(c);
+      });
+      if (cells.length > show.length) {
+        var more = document.createElement('div');
+        more.className = 'ded-ashmore';
+        more.textContent = '+' + (cells.length - show.length);
+        strip.appendChild(more);
+      }
+      card.appendChild(strip);
+      var foot = document.createElement('div');
+      foot.className = 'ded-foot';
+      var who = (d.dedicator_name || '').trim() ? '🖊 ' + d.dedicator_name : '匿名';
+      var when = (d.dedicated_at || '').slice(0, 10);
+      var kind = DED_KIND_NAMES[d.dedication_kind] || '';
+      foot.textContent = who + (kind ? ' · ' + kind : '') + (when ? ' · ' + when : '');
+      card.appendChild(foot);
+      wall.appendChild(card);
+    });
+  }
 
   /* ---------- 4. 点经文：写过/写完的直达欣赏，没写过的直达抄写 ---------- */
   function openSutra(id, done) {
@@ -1641,9 +1715,30 @@
 
   function openDedicateDialog() {
     $('dedicate-target').value = defaultDedicateTarget();
+    try { var sn = localStorage.getItem('sutra_dedicate_sign'); if (sn) $('dedicate-sign').value = sn; } catch (e) {}
     paintDedicateKinds();
+    paintDedicateNames();
     updateDedicatePreview();
     $('dedicate-overlay').classList.remove('hidden');
+  }
+  // 回向署名：匿名 / 署名（自填名字）
+  function dedicateAnon() {
+    try { return localStorage.getItem('sutra_dedicate_anon') !== '0'; } catch (e) { return true; }
+  }
+  function paintDedicateNames() {
+    var anon = dedicateAnon();
+    var box = $('dedicate-names');
+    var btns = box.querySelectorAll('.chip');
+    for (var i = 0; i < btns.length; i++) {
+      var isAnon = btns[i].getAttribute('data-anon') === '1';
+      if ((isAnon && anon) || (!isAnon && !anon)) btns[i].classList.add('active');
+      else btns[i].classList.remove('active');
+    }
+    $('dedicate-sign').classList.toggle('hidden', anon);
+  }
+  function dedicateSignName() {
+    if (dedicateAnon()) return '';
+    return ($('dedicate-sign').value || '').trim().slice(0, 20);
   }
   $('dedicate-kinds').addEventListener('click', function (e) {
     var b = e.target && e.target.getAttribute ? e.target.getAttribute('data-kind') : null;
@@ -1653,6 +1748,12 @@
     updateDedicatePreview();
   });
   $('dedicate-target').addEventListener('input', updateDedicatePreview);
+  $('dedicate-names').addEventListener('click', function (e) {
+    var b = e.target && e.target.getAttribute ? e.target.getAttribute('data-anon') : null;
+    if (b === null) return;
+    try { localStorage.setItem('sutra_dedicate_anon', b === '1' ? '1' : '0'); } catch (err) {}
+    paintDedicateNames();
+  });
   $('btn-dedicate-cancel').addEventListener('click', function () {
     $('dedicate-overlay').classList.add('hidden');
   });
@@ -1661,10 +1762,12 @@
     if (!w) return;
     var target = ($('dedicate-target').value || '').trim() || '法界一切众生';
     var kind = dedicationKind();
+    var dname = dedicateSignName();
     try { localStorage.setItem('sutra_dedicate_target', target); } catch (e) {}
+    try { if (dname) localStorage.setItem('sutra_dedicate_sign', dname); } catch (e) {}
     if (!confirm('回向后字迹化烟，唯留尘埃与回向文，不可再欣赏、续写。确定回向吗？')) return;
     $('btn-dedicate-confirm').disabled = true;
-    api('/api/works/' + w.id + '/dedicate', { method: 'POST', body: JSON.stringify({ target: target, kind: kind }) })
+    api('/api/works/' + w.id + '/dedicate', { method: 'POST', body: JSON.stringify({ target: target, kind: kind, dedicator_name: dname }) })
       .then(function (res) {
         $('btn-dedicate-confirm').disabled = false;
         if (!res || !res.ok) { alert(res && res.message || '回向失败'); return; }

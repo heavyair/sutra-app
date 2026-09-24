@@ -139,6 +139,13 @@
     <div class="foot-spacer"></div>
   </section>
 
+  <!-- 5b. 回向记录：一部经的全部回向（公开与个人） -->
+  <section id="screen-dedications" class="screen">
+    <h3 id="ded-wall-title" class="sec-title">回向记录</h3>
+    <div id="ded-wall" class="ded-wall"></div>
+    <div class="foot-spacer"></div>
+  </section>
+
   <!-- 6. 作品查看：只有纸（标题写进纸里）；回向文保留展示；录音只供放映播放 -->
   <section id="screen-work" class="screen">
     <div id="dedication-block" class="dedication-block hidden">
@@ -202,6 +209,12 @@
       <button data-kind="xiaozai" class="chip">消灾祈福</button>
     </div>
     <p id="dedicate-preview" class="dedicate-preview"></p>
+    <div class="dedicate-label2">回向署名</div>
+    <div id="dedicate-names" class="dedicate-kinds">
+      <button data-anon="1" class="chip active">匿名</button>
+      <button data-anon="0" class="chip">署名</button>
+    </div>
+    <input id="dedicate-sign" class="text-input hidden" maxlength="20" placeholder="署名，如：妙音居士">
     <div class="inkplay-bar">
       <button id="btn-dedicate-confirm" class="btn-primary">开始回向</button>
       <button id="btn-dedicate-cancel" class="btn-ghost">取消</button>
@@ -229,6 +242,6 @@
 
 <script src="music.js?v=29"></script>
 <script src="writing.js?v=29"></script>
-<script src="app.js?v=32"></script>
+<script src="app.js?v=33"></script>
 </body>
 </html>

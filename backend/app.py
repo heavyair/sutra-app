@@ -189,11 +189,18 @@ def migrate_works():
             """UPDATE works SET farewell_mode = 'public'
                WHERE farewell_mode IS NULL AND farewell_at IS NOT NULL"""
         )
-    # 回向：dedicated_at / dedication_target / dedication_text / dedication_kind / ash_cells（幂等补列）
+    # 回向：dedicated_at / dedication_target / dedication_text / dedication_kind / ash_cells /
+    #      dedicator_name（回向署名，空=匿名）/ dedication_expires_at（7天无人访问删除；幂等补列）
     cols = [r[1] for r in conn.execute("PRAGMA table_info(works)").fetchall()]
-    for _col in ("dedicated_at", "dedication_target", "dedication_text", "dedication_kind", "ash_cells"):
+    for _col in ("dedicated_at", "dedication_target", "dedication_text", "dedication_kind", "ash_cells",
+                 "dedicator_name", "dedication_expires_at"):
         if _col not in cols:
             conn.execute(f"ALTER TABLE works ADD COLUMN {_col} TEXT")
+    # 存量已回向作品：按回向时刻起算 7 天有效期
+    conn.execute(
+        """UPDATE works SET dedication_expires_at = datetime(dedicated_at, '+7 days')
+           WHERE dedicated_at IS NOT NULL AND dedication_expires_at IS NULL"""
+    )
     conn.execute(
         """CREATE TABLE IF NOT EXISTS work_chars (
              id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -568,12 +575,52 @@ def me():
 def sutra_list():
     conn = get_db()
     rows = conn.execute(
-        "SELECT id, title, tradition, intro, like_count,"
-        "       CASE WHEN full_text IS NULL THEN 0 ELSE length(full_text) END AS char_count"
-        " FROM sutras ORDER BY tradition, title"
+        "SELECT s.id, s.title, s.tradition, s.intro, s.like_count,"
+        "       CASE WHEN s.full_text IS NULL THEN 0 ELSE length(s.full_text) END AS char_count,"
+        "       (SELECT COUNT(*) FROM works w WHERE w.sutra_id = s.id"
+        "        AND w.dedicated_at IS NOT NULL"
+        "        AND w.dedication_expires_at > datetime('now')) AS dedication_count"
+        " FROM sutras s ORDER BY s.tradition, s.title"
     ).fetchall()
     conn.close()
     return jsonify({"ok": True, "sutras": [dict(r) for r in rows]})
+
+
+@app.route("/api/sutra/<sutra_id>/dedications")
+def sutra_dedications(sutra_id):
+    """某经文的回向记录：所有已回向作品（公开/个人），按回向时间倒序。
+    只返回有效期内；每次访问，有效期延长 7 天（无人访问 7 天后由清理脚本删除）。"""
+    conn = get_db()
+    srow = conn.execute("SELECT id FROM sutras WHERE id = ?", (sutra_id,)).fetchone()
+    if not srow:
+        conn.close()
+        return jsonify({"ok": False, "message": "经文不存在"}), 404
+    conn.execute(
+        """UPDATE works SET dedication_expires_at = datetime('now', '+7 days')
+           WHERE sutra_id = ? AND dedicated_at IS NOT NULL
+             AND dedication_expires_at > datetime('now')""",
+        (sutra_id,),
+    )
+    rows = conn.execute(
+        """SELECT id, dedication_text, dedication_kind, dedication_target,
+                  dedicator_name, dedicated_at, ash_cells
+           FROM works
+           WHERE sutra_id = ? AND dedicated_at IS NOT NULL
+             AND dedication_expires_at > datetime('now')
+           ORDER BY dedicated_at DESC LIMIT 100""",
+        (sutra_id,),
+    ).fetchall()
+    conn.commit()
+    conn.close()
+    out = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["ash_cells"] = json.loads(d["ash_cells"] or "[]")
+        except Exception:
+            d["ash_cells"] = []
+        out.append(d)
+    return jsonify({"ok": True, "dedications": out})
 
 
 @app.route("/api/sutra/<sutra_id>")
@@ -810,6 +857,15 @@ def work_get(wid):
         "SELECT pos, ch, pen, strokes FROM work_chars WHERE work_id = ? ORDER BY pos",
         (wid,),
     ).fetchall()
+    if "dedicated_at" in w.keys() and w["dedicated_at"]:
+        # 回向记录：每次有人访问（查看此作），有效期延长 7 天；已过期的不再续（等清理删除）
+        conn.execute(
+            """UPDATE works SET dedication_expires_at = datetime('now', '+7 days')
+               WHERE id = ? AND (dedication_expires_at IS NULL
+                                 OR dedication_expires_at > datetime('now'))""",
+            (wid,),
+        )
+        conn.commit()
     conn.close()
     out = []
     for c in chars:
@@ -1057,6 +1113,7 @@ def work_dedicate(wid):
     kind = data.get("kind")
     if kind not in DEDICATION_TEXTS:
         kind = "huixiangji"
+    dname = (data.get("dedicator_name") or "").strip()[:20]  # 空=匿名
     rows = conn.execute("SELECT pos FROM work_chars WHERE work_id = ?", (wid,)).fetchall()
     ash = sorted(set(r["pos"] for r in rows))
     if not ash:
@@ -1071,10 +1128,12 @@ def work_dedicate(wid):
             pass
     conn.execute(
         """UPDATE works SET dedicated_at = datetime('now'), dedication_target = ?,
-               dedication_text = ?, dedication_kind = ?, ash_cells = ?, audio_path = NULL,
+               dedication_text = ?, dedication_kind = ?, dedicator_name = ?,
+               dedication_expires_at = datetime('now', '+7 days'),
+               ash_cells = ?, audio_path = NULL,
                farewell_at = NULL, farewell_mode = 'dedicated',
                updated_at = datetime('now') WHERE id = ?""",
-        (target, text, kind, json.dumps(ash), wid),
+        (target, text, kind, dname, json.dumps(ash), wid),
     )
     conn.commit()
     conn.close()
