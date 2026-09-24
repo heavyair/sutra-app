@@ -589,29 +589,56 @@
   };
 
   /* 作品查看器 PDF 用：复刻书写时 pad.snapshot() 的取景 ——
-   * 按原画布宽高比画满整张，再按模板字区裁剪（_fallbackGrid 同款近似），纸底，360px 宽。
-   * 与书写中"欣赏→PDF"用的成品快照同观感：字大、取景紧。 */
-  WritingPad.renderCropped = function (rec, ch) {
+   * 按原画布宽高比画满整张，再扫描模板字形得包围盒（与 pad._computeGrid 同算法），
+   * 四周留 25% 裁剪，纸底，360px 宽。与书写中"欣赏→PDF"的成品快照同取景。 */
+  WritingPad.renderCropped = function (rec, ch, fontStack) {
     var W = 390;
     var ar = (rec && rec.ar) || WritingPad._viewportAr() || 0.5;
     var H = Math.max(1, Math.round(W / ar));
+    var px = Math.min(W, H) * 0.52;
+    var cx = W / 2, cy = H * 0.44;
+    var font = px + 'px ' + ((fontStack || '') + ',"Kaiti SC","KaiTi","STKaiti",serif');
+    // 1) 模板字形包围盒（_computeGrid 同款；失败则 _fallbackGrid 同款）
+    var bx, by, bw, bh;
+    try {
+      var off = document.createElement('canvas');
+      off.width = W; off.height = H;
+      var c = off.getContext('2d', { willReadFrequently: true });
+      c.font = font;
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillStyle = '#000';
+      c.fillText(ch || '', cx, cy);
+      var d = c.getImageData(0, 0, W, H).data;
+      var minX = W, minY = H, maxX = -1, maxY = -1, x, y;
+      for (y = 0; y < H; y += 2) {
+        for (x = 0; x < W; x += 2) {
+          if (d[(y * W + x) * 4 + 3] > 40) {
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (y < minY) minY = y; if (y > maxY) maxY = y;
+          }
+        }
+      }
+      if (maxX < 0) throw 0;
+      bx = minX; by = minY; bw = maxX - minX + 1; bh = maxY - minY + 1;
+    } catch (e) {
+      bx = cx - px / 2; by = cy - px / 2; bw = px; bh = px;
+    }
+    // 2) 按原画布比例重画笔迹（drawStatic 同管线）
     var cv = document.createElement('canvas');
     cv.width = W; cv.height = H;
     WritingPad.drawStatic(cv, rec, ch);
-    // 模板字区近似：字号正方形，中心 (w/2, 0.44h)；四周留 25%（snapshot 同款）
-    var charPx = Math.min(W, H) * 0.52;
-    var pad = charPx * 0.25;
-    var x = Math.max(0, W / 2 - charPx / 2 - pad);
-    var y = Math.max(0, H * 0.44 - charPx / 2 - pad);
-    var w = Math.min(W - x, charPx + pad * 2);
-    var h = Math.min(H - y, charPx + pad * 2);
-    var outW = 360, outH = Math.max(1, Math.round(360 * h / w));
+    // 3) snapshot 同款裁剪：包围盒四周留 25%，输出 360px 宽，纸底 #f4eddc
+    var pad = Math.max(bw, bh) * 0.25;
+    var sx = Math.max(0, bx - pad), sy = Math.max(0, by - pad);
+    var sw = Math.min(W - sx, bw + pad * 2), sh = Math.min(H - sy, bh + pad * 2);
+    var outW = 360, outH = Math.max(1, Math.round(360 * sh / sw));
     var tmp = document.createElement('canvas');
     tmp.width = outW; tmp.height = outH;
-    var c = tmp.getContext('2d');
-    c.fillStyle = '#f4eddc';
-    c.fillRect(0, 0, outW, outH);
-    c.drawImage(cv, x, y, w, h, 0, 0, outW, outH);
-    try { return tmp.toDataURL('image/png'); } catch (e) { return ''; }
+    var t = tmp.getContext('2d');
+    t.fillStyle = '#f4eddc';
+    t.fillRect(0, 0, outW, outH);
+    t.drawImage(cv, sx, sy, sw, sh, 0, 0, outW, outH);
+    try { return tmp.toDataURL('image/png'); } catch (e2) { return ''; }
   };
 })(window);

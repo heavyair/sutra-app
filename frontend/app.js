@@ -1465,10 +1465,11 @@
   function renderInkImages() {
     var imgs = [];
     var byPos = state.workCharsByPos || {};
+    var fontStack = (state.font && state.font.stack) || '';
     for (var i = 0; i < state.chars.length; i++) {
       var saved = byPos[i];
       if (!saved) continue;
-      var dataUrl = WritingPad.renderCropped(saved.strokes || {}, state.chars[i]);
+      var dataUrl = WritingPad.renderCropped(saved.strokes || {}, state.chars[i], fontStack);
       if (dataUrl) imgs.push(dataUrl);
     }
     return imgs;
