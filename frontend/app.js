@@ -53,7 +53,11 @@
     pacePushedFor: -1, // 已计入 paceHist 的字序号（防"继续改写"重复计入）
     usualCharMs: 2500, // 用户通常的换字时间：加权统计，初值 2.5s（本机学习，跨会话保留）
     writeHist: [],     // 最近 3 个字的书写时长，用于慢写判断
-    slowStreak: 0,     // 连续慢写字数：本字书写超过前两个字则 +1
+    slowStreak: 0,     // 连续明显慢写字数（本字超过前两字各 20%）
+    lastSpringAt: -99, // 上次泉消提醒的字序号（脉冲式提醒）
+    lastRainAt: -99,   // 上次细雨提醒的字序号
+    springPulse: false, // 泉消提醒脉冲进行中
+    rainPulse: false,   // 细雨提醒脉冲进行中
   };
 
   var music = new MusicEngine();
@@ -109,8 +113,16 @@
     wh.push(writeMs);
     if (wh.length > 3) wh.shift();
     var n = wh.length;
-    var slowChar = n >= 3 && writeMs > wh[n - 2] && writeMs > wh[n - 3];
+    // 明显慢：本字书写超过前两字各 20%（过滤正常波动，不是稍慢就响）
+    var slowChar = n >= 3 && writeMs > wh[n - 2] * 1.2 && writeMs > wh[n - 3] * 1.2;
     state.slowStreak = slowChar ? state.slowStreak + 1 : 0;
+    // 脉冲式提醒（稍稍提醒，非持续）：
+    // 泉消：连续 2 字明显慢 → 轻响约 3 个字后退下，6 字内不再打扰
+    // 细雨：连续 4 字明显慢 → 加入，10 字内不再打扰
+    if (state.slowStreak >= 2 && state.charIndex - state.lastSpringAt >= 6) state.lastSpringAt = state.charIndex;
+    if (state.slowStreak >= 4 && state.charIndex - state.lastRainAt >= 10) state.lastRainAt = state.charIndex;
+    state.springPulse = state.charIndex - state.lastSpringAt <= 2;
+    state.rainPulse = state.charIndex - state.lastRainAt <= 2;
     var h = state.paceHist;
     h.push(writeMs + gapMs);
     if (h.length > 3) h.shift();
@@ -139,8 +151,8 @@
       else if (state.lastCharEnd && !state.charT0) gapMs = now - state.lastCharEnd; // 字间：写完等待落笔
       var flags = {
         chime: gapMs > 5 * state.usualCharMs,
-        spring: state.slowStreak >= 1,
-        rain: state.slowStreak >= 4
+        spring: !!state.springPulse, // 泉消：脉冲式提醒
+        rain: !!state.rainPulse       // 细雨：脉冲式提醒
       };
       music.setNatureFlags(flags);
       if (flags.chime) setPace('slow'); // 长停笔直接视为慢，不等下一字写完
@@ -510,6 +522,10 @@
     state.pacePushedFor = -1;
     state.writeHist = [];
     state.slowStreak = 0;
+    state.lastSpringAt = -99;
+    state.lastRainAt = -99;
+    state.springPulse = false;
+    state.rainPulse = false;
     try { music.setActivity(0); } catch (e) {}
     try { if (music.setNatureFlags) music.setNatureFlags({ chime: false, spring: false, rain: false }); } catch (e) {}
     pad.setFont(state.font.stack);
@@ -1098,6 +1114,10 @@
     state.pacePushedFor = -1;
     state.writeHist = [];
     state.slowStreak = 0;
+    state.lastSpringAt = -99;
+    state.lastRainAt = -99;
+    state.springPulse = false;
+    state.rainPulse = false;
     try { music.setActivity(0); } catch (e) {}
     try { if (music.setNatureFlags) music.setNatureFlags({ chime: false, spring: false, rain: false }); } catch (e) {}
     pad.setFont(state.font.stack);
