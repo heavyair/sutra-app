@@ -452,6 +452,7 @@
       if (done) done();
       if (!res.ok) { alert(res.message || '加载失败，请重试'); return; }
       var clean = (res.sutra.full_text || '').replace(/\s+/g, '');
+      state.fullChars = clean.split(''); // 全文（欣赏页用；书写时 state.chars 为段内）
       if (!clean.length) {
         alert('《' + res.sutra.title + '》全文待补充，敬请期待');
         return;
@@ -464,6 +465,7 @@
       state.completing = false;
       state.work = null;      // 新开一部作品（懒创建）
       state.workData = null;
+      state.workCharsByPos = {}; // 新开：清空旧字迹表（欣赏页从头只显示本部）
       state.flowToken++;
       renderFontCards($('font-cards'), state.font.id, function (f) { state.font = f; });
       music.setConfig(res.sutra.music_config || {});
@@ -583,6 +585,7 @@
   }
 
   function startWriting(token) {
+    state.sessionStartPos = 0; // 新开：本会话快照从全文 0 开始
     showScreen('screen-write');
     closeTools();
     hideOverlays();
@@ -678,14 +681,16 @@
       var strokes = (rec.strokes && rec.strokes.length)
         ? rec
         : { pen: rec.pen, auto: 'punct', strokes: [] };
+      var pos = state.paraStart + state.charIndex;
+      var ch = state.chars[state.charIndex];
+      // 本地字迹表同步：欣赏页可从头展示全部已写字（含续写的新字）
+      try {
+        var byPos = state.workCharsByPos || (state.workCharsByPos = {});
+        byPos[pos] = { pos: pos, ch: ch, pen: state.pen.id, strokes: strokes };
+      } catch (e) {}
       api('/api/works/' + state.work.id + '/chars', {
         method: 'PUT',
-        body: JSON.stringify({
-          pos: state.paraStart + state.charIndex, // 服务端按全文序号存
-          ch: state.chars[state.charIndex],
-          pen: state.pen.id,
-          strokes: strokes
-        })
+        body: JSON.stringify({ pos: pos, ch: ch, pen: state.pen.id, strokes: strokes })
       }).catch(function () {});
     };
     if (state.work && state.work.id) doSave();
@@ -860,9 +865,11 @@
       state.completing = false;
       state.workImages.pop();
       updateProgress();
-      // 刚存进服务端的字也删掉（全文序号）
+      // 刚存进服务端的字也删掉（全文序号），本地字迹表同步
       if (state.work && state.work.id) {
-        api('/api/works/' + state.work.id + '/chars/' + (state.paraStart + state.charIndex), { method: 'DELETE' }).catch(function () {});
+        var delPos = state.paraStart + state.charIndex;
+        api('/api/works/' + state.work.id + '/chars/' + delPos, { method: 'DELETE' }).catch(function () {});
+        try { delete (state.workCharsByPos || {})[delPos]; } catch (e) {}
       }
     }
     pad.cancelFade();
@@ -1076,23 +1083,41 @@
   function openAppreciate() {
     $('work-title').textContent = state.sutra ? '《' + state.sutra.title + '》' : '';
     var d = new Date();
-    $('work-meta').textContent =
-      '已抄 ' + state.workImages.length + ' / ' + state.totalChars + ' 字 · ' +
-      d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
     var sheet = $('work-sheet');
     sheet.innerHTML = '';
-    if (!state.workImages.length) {
+    // 从头展示：已存字迹（续写前写好的）+ 本会话新写的，一律按全文序号排
+    var byPos = state.workCharsByPos || {};
+    var full = state.fullChars || state.chars || [];
+    var total = state.totalChars || full.length;
+    var startPos = state.sessionStartPos || 0;
+    var count = 0;
+    for (var pos = 0; pos < total; pos++) {
+      var saved = byPos[pos];
+      var imgSrc = null;
+      if (saved) {
+        // 有落笔记录：按记录重画（与作品查看一致）
+        var cv = document.createElement('canvas');
+        cv.width = cv.height = 240;
+        WritingPad.drawStatic(cv, saved.strokes || {}, saved.ch || full[pos]);
+        imgSrc = cv.toDataURL('image/png');
+      } else if (pos >= startPos && state.workImages[pos - startPos]) {
+        // 兜底：本会话快照（落笔记录未同步时，如断网）
+        imgSrc = state.workImages[pos - startPos];
+      }
+      if (!imgSrc) continue;
+      count++;
+      var div = document.createElement('div');
+      div.className = 'work-char';
+      var img = document.createElement('img');
+      img.src = imgSrc;
+      div.appendChild(img);
+      sheet.appendChild(div);
+    }
+    $('work-meta').textContent =
+      '已抄 ' + count + ' / ' + total + ' 字 · ' +
+      d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+    if (!count) {
       sheet.innerHTML = '<div class="work-empty">还没有写完的字，回去继续吧。</div>';
-    } else {
-      state.workImages.forEach(function (src) {
-        if (!src) return;
-        var div = document.createElement('div');
-        div.className = 'work-char';
-        var img = document.createElement('img');
-        img.src = src;
-        div.appendChild(img);
-        sheet.appendChild(div);
-      });
     }
     showScreen('screen-appreciate');
   }
@@ -1196,6 +1221,7 @@
         if (!sr || !sr.ok || !sr.sutra) { alert('经文数据缺失'); return; }
         state.sutra = sr.sutra;
         var clean = (sr.sutra.full_text || '').replace(/\s+/g, '');
+        state.fullChars = clean.split('');
         state.chars = clean.split(''); // 查看器：全文（字格用）
         state.paras = splitParagraphs(clean);
         state.totalChars = clean.length;
@@ -1324,6 +1350,7 @@
     while (idx < state.totalChars && byPos[idx]) idx++;
     if (idx >= state.totalChars) { alert('已经写完了'); return; }
     state.workImages = [];
+    state.sessionStartPos = idx; // 续写：本会话快照从 idx 开始对应全文序号
     setParaForGlobalPos(idx); // 按全文序号定位到段落
     startWritingDirect();
   });
