@@ -314,6 +314,13 @@
     this.start(); return true;
   };
 
+  // 显示经文时静音 / 书写时淡入：不断 AudioContext，录制不中断
+  MusicEngine.prototype.setAudible = function (on) {
+    if (!this.ctx || !this.master) return;
+    var target = on ? (this.muted ? 0 : 0.6) : 0;
+    try { this.master.gain.setTargetAtTime(target, this.ctx.currentTime, 0.8); } catch (e) {}
+  };
+
   /* 自然声出现条件：app.js 按书写节奏评估后传入
    * {chime: 停笔>通常5字 → 高音（轻磬/小磬）, spring: 慢写 → 泉消, rain: 连慢4字 → 细雨} */
   MusicEngine.prototype.setNatureFlags = function (f) {

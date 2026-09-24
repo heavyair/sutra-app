@@ -1,9 +1,9 @@
 /* 抄经应用 · 主流程（无构建、原生 JS）
  *
- * 流程：推荐码 → 注册/登录（手机或邮箱）→ 经文库 → 选字体 → 开场（经名2秒 → 段落慢读高亮）→ 选笔 →
+ * 流程：推荐码 → 注册/登录（手机或邮箱）→ 经文库 → 选字体 → 开场（经名2秒 → 段落慢读高亮）→
  *       全屏单字临摹（虚影字）→ 自动检测写成 → 缓缓隐藏 → 下一字 →
- *       全部写完 → 欣赏 / PDF / 分享
- * 工具（左下角 ☰）：经文 · 字体 · 笔 · 背景音 · 欣赏 · 分享（点开散布全屏）
+ *       一段写完 → 下一段同样先显示经文（无音乐）再书写 → 全部写完 → 欣赏 / PDF / 分享
+ * 工具（左下角 ☰）：经文 · 字体 · 背景音 · 欣赏 · 分享（点开散布全屏）
  */
 (function () {
   'use strict';
@@ -21,9 +21,7 @@
   ];
 
   var PENS = [
-    { id: 'pencil', name: '铅笔', desc: '细线起稿 · 默认' },
     { id: 'maobi', name: '毛笔', desc: '浓墨毛丝 · 随速飞白' },
-    { id: 'gangbi', name: '钢笔', desc: '流畅书写 · 粗细均匀' },
   ];
 
   var DONE_COVERAGE = 0.22;   // 覆盖虚影字多少判为写成
@@ -31,8 +29,12 @@
 
   var state = {
     sutra: null,
-    chars: [],
-    charIndex: 0,
+    chars: [],         // 当前段落的字（书写用）；作品查看器里为全文
+    charIndex: 0,      // 段落内字序号；全局序号 = paraStart + charIndex
+    paras: [],         // 全文按标点切成的段落
+    paraIndex: 0,      // 当前段落序号
+    paraStart: 0,      // 当前段落起始的全局字序号
+    totalChars: 0,     // 全文总字数
     filter: 'all',
     font: FONTS[0],
     pen: PENS[0],
@@ -446,14 +448,15 @@
     api('/api/sutra/' + encodeURIComponent(id)).then(function (res) {
       if (done) done();
       if (!res.ok) { alert(res.message || '加载失败，请重试'); return; }
-      var chars = (res.sutra.full_text || '').replace(/\s+/g, '').split('');
-      if (!chars.length) {
+      var clean = (res.sutra.full_text || '').replace(/\s+/g, '');
+      if (!clean.length) {
         alert('《' + res.sutra.title + '》全文待补充，敬请期待');
         return;
       }
       state.sutra = res.sutra;
-      state.chars = chars;
-      state.charIndex = 0;
+      state.paras = splitParagraphs(clean);
+      state.totalChars = clean.length;
+      setPara(0);
       state.workImages = [];
       state.completing = false;
       state.work = null;      // 新开一部作品（懒创建）
@@ -496,16 +499,84 @@
     startWriting(state.flowToken);
   });
 
-  /* ---------- 5. 开场：经名 2 秒 → 段落慢读高亮 → 选笔 ---------- */
-  function firstParagraph(text) {
+  /* ---------- 5. 开场：经名 2 秒 → 段落慢读高亮（无音乐）→ 书写 ---------- */
+  // 全文按标点切成段落：遇到 。！？ 必断；；， 视长度断；超 40 字硬断
+  function splitParagraphs(text) {
     var t = (text || '').replace(/\s+/g, '');
-    var parts = t.split(/([。！？；\n])/);
-    var out = '';
-    for (var i = 0; i < parts.length && out.length < 36; i += 2) {
-      out += parts[i] + (parts[i + 1] || '');
-      if (/[。！？]/.test(parts[i + 1] || '')) break;
+    var parts = t.split(/([。！？；，])/);
+    var paras = [], cur = '';
+    for (var i = 0; i < parts.length; i += 2) {
+      var seg = parts[i] + (parts[i + 1] || '');
+      if (!seg) continue;
+      cur += seg;
+      var d = parts[i + 1] || '';
+      if (/[。！？]/.test(d) || (/[；，]/.test(d) && cur.length >= 28) || cur.length >= 44) {
+        paras.push(cur);
+        cur = '';
+      }
     }
-    return out.slice(0, 36) || t.slice(0, 36);
+    if (cur) paras.push(cur);
+    return paras.length ? paras : [t];
+  }
+
+  function setPara(pi) {
+    state.paraIndex = pi;
+    var off = 0;
+    for (var i = 0; i < pi; i++) off += state.paras[i].length;
+    state.paraStart = off;
+    state.chars = state.paras[pi].split('');
+    state.charIndex = 0;
+  }
+
+  // 续写：按全局字序号定位到段落
+  function setParaForGlobalPos(pos) {
+    var off = 0;
+    for (var i = 0; i < state.paras.length; i++) {
+      var len = state.paras[i].length;
+      if (pos < off + len) {
+        state.paraIndex = i;
+        state.paraStart = off;
+        state.chars = state.paras[i].split('');
+        state.charIndex = pos - off;
+        return;
+      }
+      off += len;
+    }
+    var li = state.paras.length - 1;
+    state.paraIndex = li;
+    state.paraStart = off - state.paras[li].length;
+    state.chars = state.paras[li].split('');
+    state.charIndex = state.chars.length;
+  }
+
+  // 段落经文显示：逐字慢读高亮，显示期间没有音乐
+  function showParaIntro(paraText, token, cb) {
+    var overlay = $('intro-overlay');
+    var titleEl = $('intro-title');
+    var paraEl = $('intro-para');
+    overlay.classList.remove('hidden', 'fading');
+    titleEl.style.display = 'none';
+    paraEl.style.display = '';
+    paraEl.innerHTML = '';
+    var spans = paraText.split('').map(function (ch) {
+      var sp = document.createElement('span');
+      sp.textContent = ch;
+      paraEl.appendChild(sp);
+      return sp;
+    });
+    (async function () {
+      for (var i = 0; i < spans.length; i++) {
+        if (token !== state.flowToken) return;
+        spans[i].classList.add('lit');
+        await sleep(550);                      // 慢读速
+      }
+      await sleep(600);
+      if (token !== state.flowToken) return;
+      overlay.classList.add('fading');
+      await sleep(650);
+      overlay.classList.add('hidden');
+      if (cb) cb();
+    })();
   }
 
   function startWriting(token) {
@@ -514,22 +585,12 @@
     hideOverlays();
     ensurePad();
     // 新开书写：节奏复位为慢（自然声开着，入静氛围）
-    state.pace = 'slow';
-    state.paceHist = [];
-    state.charT0 = 0;
-    state.charGap = 0;
-    state.lastCharEnd = 0;
-    state.pacePushedFor = -1;
-    state.writeHist = [];
-    state.slowStreak = 0;
-    state.lastSpringAt = -99;
-    state.lastRainAt = -99;
-    state.springPulse = false;
-    state.rainPulse = false;
-    try { music.setActivity(0); } catch (e) {}
-    try { if (music.setNatureFlags) music.setNatureFlags({ chime: false, spring: false, rain: false }); } catch (e) {}
+    resetParaRhythm();
     pad.setFont(state.font.stack);
     pad.setPen(state.pen.id);
+    // 开乐（用户手势链中，可直接启动 AudioContext）；显示经文时静音
+    if (!state.musicOn) { music.start(); state.musicOn = true; }
+    try { music.setAudible(false); } catch (e) {}
 
     var overlay = $('intro-overlay');
     var titleEl = $('intro-title');
@@ -546,71 +607,49 @@
       overlay.classList.add('fading');
       await sleep(650);
       if (token !== state.flowToken) return;
-      overlay.classList.remove('fading');
-      titleEl.style.display = 'none';
-      paraEl.style.display = '';
-
-      // 段落逐字慢读高亮
-      var para = firstParagraph(state.sutra.full_text);
-      paraEl.innerHTML = '';
-      var spans = para.split('').map(function (ch) {
-        var sp = document.createElement('span');
-        sp.textContent = ch;
-        paraEl.appendChild(sp);
-        return sp;
+      // 第一段经文显示（慢读高亮，无音乐）
+      showParaIntro(state.paras[state.paraIndex], token, function () {
+        beginWritePara(true);
       });
-      for (var i = 0; i < spans.length; i++) {
-        if (token !== state.flowToken) return;
-        spans[i].classList.add('lit');
-        await sleep(550);                      // 慢读速
-      }
-      await sleep(600);
-      if (token !== state.flowToken) return;
-      overlay.classList.add('fading');
-      await sleep(650);
-      overlay.classList.add('hidden');
-
-      showPenPicker(true);                     // 首次选笔
     })();
   }
 
-  /* ---------- 6. 选笔 ---------- */
-  function renderPenCards() {
-    var c = $('pen-cards');
-    c.innerHTML = '';
-    PENS.forEach(function (p) {
-      var b = document.createElement('button');
-      b.className = 'pick-card' + (p.id === state.pen.id ? ' selected' : '');
-      b.innerHTML =
-        '<span><span class="pick-name">' + p.name + '</span>' +
-        '<span class="pick-desc" style="display:block">' + p.desc + '</span></span>';
-      b.addEventListener('click', function () {
-        c.querySelectorAll('.pick-card').forEach(function (x) { x.classList.remove('selected'); });
-        b.classList.add('selected');
-        state.pen = p;
-        if (pad) pad.setPen(p.id);
-      });
-      c.appendChild(b);
+  // 段落书写前的节奏复位：每段都从入静开始
+  function resetParaRhythm() {
+    state.pace = 'slow';
+    state.paceHist = [];
+    state.charT0 = 0;
+    state.charGap = 0;
+    state.lastCharEnd = 0;
+    state.pacePushedFor = -1;
+    state.writeHist = [];
+    state.slowStreak = 0;
+    state.lastSpringAt = -99;
+    state.lastRainAt = -99;
+    state.springPulse = false;
+    state.rainPulse = false;
+    try { music.setActivity(0); } catch (e) {}
+    try { if (music.setNatureFlags) music.setNatureFlags({ chime: false, spring: false, rain: false }); } catch (e) {}
+  }
+
+  // 一段经文显示完 → 开始书写本段：音乐淡入；首段同时开始录制写字音乐
+  function beginWritePara(first) {
+    try { music.setAudible(true); } catch (e) {}
+    if (first) { try { music.startRecording(); } catch (e) {} }
+    beginChar();
+  }
+
+  // 一段写完 → 下一段同样先显示经文（无音乐），再书写
+  function nextParagraph() {
+    setPara(state.paraIndex + 1);
+    resetParaRhythm();
+    try { music.setAudible(false); } catch (e) {}  // 显示经文时没有音乐
+    showParaIntro(state.paras[state.paraIndex], state.flowToken, function () {
+      beginWritePara(false);
     });
   }
 
-  function showPenPicker(first) {
-    renderPenCards();
-    $('btn-pen-done').textContent = first ? '开始书写' : '确定';
-    $('pen-picker').classList.remove('hidden');
-    $('pen-picker').dataset.first = first ? '1' : '';
-  }
-
-  $('btn-pen-done').addEventListener('click', function () {
-    var first = $('pen-picker').dataset.first === '1';
-    $('pen-picker').classList.add('hidden');
-    if (first) {
-      // 开乐：用户手势链中，可直接启动 AudioContext；同时开始录制写字音乐
-      if (!state.musicOn) { music.start(); state.musicOn = true; }
-      try { music.startRecording(); } catch (e) {}
-      beginChar();
-    }
-  });
+  /* ---------- 6. 笔：只保留毛笔（PENS 单一，无需选择器） ---------- */
 
   /* ---------- 作品（服务端逐字存储） ---------- */
   // 懒创建：写下第一个字时才建作品，避免空作品堆积
@@ -639,7 +678,7 @@
       api('/api/works/' + state.work.id + '/chars', {
         method: 'PUT',
         body: JSON.stringify({
-          pos: state.charIndex,
+          pos: state.paraStart + state.charIndex, // 服务端按全文序号存
           ch: state.chars[state.charIndex],
           pen: state.pen.id,
           strokes: strokes
@@ -748,7 +787,8 @@
     state.lastCharEnd = Date.now(); // 标点不计入节奏样本，但更新等待起点
     state.charIndex++;
     if (state.charIndex >= state.chars.length) {
-      showDone();
+      if (state.paraIndex < state.paras.length - 1) nextParagraph();
+      else showDone();
     } else {
       beginChar();
     }
@@ -773,7 +813,9 @@
       $('btn-keep-editing').classList.add('hidden');
       state.charIndex++;
       if (state.charIndex >= state.chars.length) {
-        showDone();
+        // 本段写完：还有下一段 → 显示新段落经文；否则全篇完成
+        if (state.paraIndex < state.paras.length - 1) nextParagraph();
+        else showDone();
       } else {
         // 新字显现：写得快 → 慢显现；写得慢 → 快出现
         var token = state.flowToken;
@@ -808,9 +850,9 @@
       state.completing = false;
       state.workImages.pop();
       updateProgress();
-      // 刚存进服务端的字也删掉
+      // 刚存进服务端的字也删掉（全文序号）
       if (state.work && state.work.id) {
-        api('/api/works/' + state.work.id + '/chars/' + state.charIndex, { method: 'DELETE' }).catch(function () {});
+        api('/api/works/' + state.work.id + '/chars/' + (state.paraStart + state.charIndex), { method: 'DELETE' }).catch(function () {});
       }
     }
     pad.cancelFade();
@@ -820,7 +862,7 @@
   });
 
   function updateProgress() {
-    var p = state.chars.length ? state.workImages.length / state.chars.length : 0;
+    var p = state.totalChars ? state.workImages.length / state.totalChars : 0;
     music.setProgress(p); // 音乐随进度加层
   }
 
@@ -856,8 +898,6 @@
           if (pad) pad.setFont(f.stack);
         });
         $('font-overlay').classList.remove('hidden');
-      } else if (t === 'pen') {
-        showPenPicker(false);
       } else if (t === 'music') {
         var on = music.toggle();
         state.musicOn = on;
@@ -884,7 +924,7 @@
   });
 
   function hideOverlays() {
-    ['pen-picker', 'font-overlay', 'done-overlay'].forEach(function (id) {
+    ['font-overlay', 'done-overlay'].forEach(function (id) {
       $(id).classList.add('hidden');
     });
     $('intro-overlay').classList.add('hidden');
@@ -894,7 +934,7 @@
   function showDone() {
     var d = new Date();
     $('done-summary').textContent =
-      '《' + state.sutra.title + '》 · 共 ' + state.chars.length + ' 字 · ' +
+      '《' + state.sutra.title + '》 · 共 ' + state.totalChars + ' 字 · ' +
       d.getFullYear() + ' 年 ' + (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日';
     $('done-overlay').classList.remove('hidden');
     // 写字时生成的音乐：录制收尾并随作品保存
@@ -931,7 +971,7 @@
     $('work-title').textContent = state.sutra ? '《' + state.sutra.title + '》' : '';
     var d = new Date();
     $('work-meta').textContent =
-      '已抄 ' + state.workImages.length + ' / ' + state.chars.length + ' 字 · ' +
+      '已抄 ' + state.workImages.length + ' / ' + state.totalChars + ' 字 · ' +
       d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
     var sheet = $('work-sheet');
     sheet.innerHTML = '';
@@ -1024,7 +1064,10 @@
       api('/api/sutra/' + encodeURIComponent(res.work.sutra_id)).then(function (sr) {
         if (!sr || !sr.ok || !sr.sutra) { alert('经文数据缺失'); return; }
         state.sutra = sr.sutra;
-        state.chars = (sr.sutra.full_text || '').replace(/\s+/g, '').split('');
+        var clean = (sr.sutra.full_text || '').replace(/\s+/g, '');
+        state.chars = clean.split(''); // 查看器：全文（字格用）
+        state.paras = splitParagraphs(clean);
+        state.totalChars = clean.length;
         var f = FONTS.filter(function (x) { return x.id === res.work.font_id; })[0] || FONTS[0];
         state.font = f;
         state.work = res.work;
@@ -1092,10 +1135,10 @@
     if (!res) return;
     var byPos = state.workCharsByPos || {};
     var idx = 0;
-    while (idx < state.chars.length && byPos[idx]) idx++;
-    if (idx >= state.chars.length) { alert('已经写完了'); return; }
-    state.charIndex = idx;
+    while (idx < state.totalChars && byPos[idx]) idx++;
+    if (idx >= state.totalChars) { alert('已经写完了'); return; }
     state.workImages = [];
+    setParaForGlobalPos(idx); // 按全文序号定位到段落
     startWritingDirect();
   });
 
@@ -1105,24 +1148,12 @@
     closeTools();
     hideOverlays();
     ensurePad();
-    // 续写：节奏同样复位为慢
-    state.pace = 'slow';
-    state.paceHist = [];
-    state.charT0 = 0;
-    state.charGap = 0;
-    state.lastCharEnd = 0;
-    state.pacePushedFor = -1;
-    state.writeHist = [];
-    state.slowStreak = 0;
-    state.lastSpringAt = -99;
-    state.lastRainAt = -99;
-    state.springPulse = false;
-    state.rainPulse = false;
-    try { music.setActivity(0); } catch (e) {}
-    try { if (music.setNatureFlags) music.setNatureFlags({ chime: false, spring: false, rain: false }); } catch (e) {}
+    // 续写：节奏同样复位为慢，直接进入书写（无段落显示）
+    resetParaRhythm();
     pad.setFont(state.font.stack);
     pad.setPen(state.pen.id);
     if (!state.musicOn) { music.start(); state.musicOn = true; }
+    try { music.setAudible(true); } catch (e) {}
     try { music.startRecording(); } catch (e) {}
     beginChar();
   }
