@@ -158,6 +158,8 @@ def migrate_works():
              chars_total INTEGER DEFAULT 0,
              chars_done  INTEGER DEFAULT 0,
              completed_at TEXT,
+             farewell_at   TEXT,
+             farewell_mode TEXT,                      -- 去向：keep=私藏 | public=陈列 | cremate=焚化
              created_at  TEXT DEFAULT (datetime('now')),
              updated_at  TEXT DEFAULT (datetime('now'))
            )"""
@@ -171,6 +173,21 @@ def migrate_works():
             """UPDATE works SET completed_at = datetime('now')
                WHERE completed_at IS NULL AND is_public = 1
                  AND chars_total > 0 AND chars_done >= chars_total"""
+        )
+    # farewell_at：焚化时刻（NULL=不焚化，即注册用户私藏）。清理脚本只看此列。
+    if "farewell_at" not in cols:
+        conn.execute("ALTER TABLE works ADD COLUMN farewell_at TEXT")
+        conn.execute(
+            """UPDATE works SET farewell_at = datetime(completed_at, '+7 days')
+               WHERE farewell_at IS NULL AND completed_at IS NOT NULL AND is_public = 1"""
+        )
+    # farewell_mode：去向选择（幂等补列）
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(works)").fetchall()]
+    if "farewell_mode" not in cols:
+        conn.execute("ALTER TABLE works ADD COLUMN farewell_mode TEXT")
+        conn.execute(
+            """UPDATE works SET farewell_mode = 'public'
+               WHERE farewell_mode IS NULL AND farewell_at IS NOT NULL"""
         )
     conn.execute(
         """CREATE TABLE IF NOT EXISTS work_chars (
@@ -664,13 +681,25 @@ def _work_role(work, user):
 
 
 def _work_json(w):
+    keys = w.keys()
+    farewell_at = w["farewell_at"] if "farewell_at" in keys else None
+    farewell_days = None
+    if farewell_at:
+        try:
+            dt = datetime.strptime(farewell_at, "%Y-%m-%d %H:%M:%S")
+            secs = (dt - datetime.utcnow()).total_seconds()
+            farewell_days = max(0, int(-(-secs // 86400)))
+        except (ValueError, TypeError):
+            pass
     return {
         "id": w["id"], "sutra_id": w["sutra_id"], "title": w["title"],
         "font_id": w["font_id"], "owner_type": w["owner_type"],
         "is_public": bool(w["is_public"]), "has_audio": bool(w["audio_path"]),
         "chars_total": w["chars_total"], "chars_done": w["chars_done"],
         "created_at": w["created_at"], "updated_at": w["updated_at"],
-        "completed_at": w["completed_at"] if "completed_at" in w.keys() else None,
+        "completed_at": w["completed_at"] if "completed_at" in keys else None,
+        "farewell_at": farewell_at, "farewell_days": farewell_days,
+        "farewell_mode": w["farewell_mode"] if "farewell_mode" in keys else None,
     }
 
 
@@ -808,7 +837,8 @@ def work_save_char(wid):
     )
     conn.execute(
         """UPDATE works SET chars_done = (SELECT COUNT(*) FROM work_chars WHERE work_id = ?),
-                              updated_at = datetime('now') WHERE id = ?""",
+                              updated_at = datetime('now'),
+                              farewell_at = NULL, farewell_mode = NULL WHERE id = ?""",
         (wid, wid),
     )
     conn.commit()
@@ -856,20 +886,74 @@ def work_delete(wid):
 
 @app.route("/api/works/<int:wid>/complete", methods=["POST"])
 def work_complete(wid):
-    """标记作品完成：公开作品自此 7 日后焚化（自动删除）。幂等。"""
+    """标记完成 + 选择去向（幂等；重复完成不覆盖已有选择）。
+    mode: ''=仅标记完成(首次按默认去向) | 'keep'=私藏 | 'public'=陈列七日 | 'cremate'=定时焚化
+    days: cremate 时 1~7（最多七日）"""
+    data = request.get_json(silent=True) or {}
+    mode = (data.get("mode") or "").strip()
+    try:
+        days = max(1, min(7, int(data.get("days", 7))))
+    except (TypeError, ValueError):
+        days = 7
     conn = get_db()
     w = conn.execute("SELECT * FROM works WHERE id = ?", (wid,)).fetchone()
     role = _work_role(w, current_user())
     if role not in ("owner", "writer"):
         conn.close()
         return jsonify({"ok": False, "message": "无权操作"}), 403
-    conn.execute("UPDATE works SET completed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
-                 (wid,))
+    if not w["completed_at"]:
+        conn.execute("UPDATE works SET completed_at = datetime('now') WHERE id = ?", (wid,))
+    if mode == "keep":
+        # 私藏：不设焚化时刻（注册用户默认）
+        conn.execute("UPDATE works SET farewell_at = NULL, farewell_mode = 'keep' WHERE id = ?", (wid,))
+    elif mode == "public":
+        # 分享到公众陈列：最长展示七日，到期焚化
+        conn.execute(
+            """UPDATE works SET is_public = 1, farewell_mode = 'public',
+                   farewell_at = datetime('now', '+7 days') WHERE id = ?""",
+            (wid,),
+        )
+    elif mode == "cremate":
+        # 定时焚化：1~7 日后
+        conn.execute(
+            "UPDATE works SET farewell_at = datetime('now', ?), farewell_mode = 'cremate' WHERE id = ?",
+            (f"+{days} days", wid),
+        )
+    elif not w["farewell_at"]:
+        # 首次完成默认去向：匿名→陈列七日；注册用户→私藏
+        if w["owner_type"] == "anon":
+            conn.execute(
+                """UPDATE works SET is_public = 1, farewell_mode = 'public',
+                       farewell_at = datetime('now', '+7 days') WHERE id = ?""",
+                (wid,),
+            )
+        else:
+            conn.execute("UPDATE works SET farewell_mode = 'keep' WHERE id = ?", (wid,))
+    conn.execute("UPDATE works SET updated_at = datetime('now') WHERE id = ?", (wid,))
     conn.commit()
     w = conn.execute("SELECT * FROM works WHERE id = ?", (wid,)).fetchone()
     conn.close()
-    j = _work_json(w)
-    return jsonify({"ok": True, "work": j})
+    return jsonify({"ok": True, "work": _work_json(w)})
+
+
+@app.route("/api/works/<int:wid>/cremate", methods=["POST"])
+def work_cremate(wid):
+    """即刻焚化：立即删除作品（含字数据与录音）。形化去，功德留存。"""
+    conn = get_db()
+    w = conn.execute("SELECT * FROM works WHERE id = ?", (wid,)).fetchone()
+    if _work_role(w, current_user()) != "owner":
+        conn.close()
+        return jsonify({"ok": False, "message": "无权焚化"}), 403
+    conn.execute("DELETE FROM work_chars WHERE work_id = ?", (wid,))
+    if w["audio_path"]:
+        try:
+            os.remove(os.path.join(AUDIO_DIR, os.path.basename(w["audio_path"])))
+        except OSError:
+            pass
+    conn.execute("DELETE FROM works WHERE id = ?", (wid,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/storage/status", methods=["GET"])

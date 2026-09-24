@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1a1611">
 <title>抄经 · 静心</title>
-<link rel="stylesheet" href="styles.css?v=18">
+<link rel="stylesheet" href="styles.css?v=19">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@600&display=swap">
 </head>
@@ -125,16 +125,34 @@
 
     <!-- 全部写完 -->
     <div id="done-overlay" class="picker-overlay hidden">
-      <div class="picker-card">
+      <div class="picker-card" id="done-main">
         <div class="done-seal">🪷</div>
         <h3>全部写完</h3>
         <p id="done-summary" class="picker-hint"></p>
-        <p id="done-cremate-hint" class="picker-hint hidden">此作七日后焚化 · 功德圆满 🪷</p>
+        <div id="done-farewell" class="farewell-block">
+          <p class="farewell-title">此作何去</p>
+          <div id="farewell-modes" class="farewell-row"></div>
+          <div id="farewell-days-row" class="farewell-row hidden">
+            <button class="chip" data-days="0">即刻</button>
+            <button class="chip" data-days="1">1 日后</button>
+            <button class="chip" data-days="3">3 日后</button>
+            <button class="chip active" data-days="7">7 日后</button>
+          </div>
+          <p id="farewell-note" class="picker-hint"></p>
+        </div>
         <div class="done-actions">
           <button id="btn-done-view" class="btn-primary">欣赏作品</button>
           <button id="btn-done-pdf" class="btn-secondary">生成 PDF</button>
           <button id="btn-done-share" class="btn-secondary">分享</button>
           <button id="btn-done-lib" class="btn-ghost">返回经文库</button>
+        </div>
+      </div>
+      <div class="picker-card hidden" id="done-cremated">
+        <div class="done-seal">🪷</div>
+        <h3>尘归尘 · 功德圆满</h3>
+        <p class="picker-hint">此作已焚化，形化去，功德留存。</p>
+        <div class="done-actions">
+          <button id="btn-cremated-lib" class="btn-primary">返回经文库</button>
         </div>
       </div>
     </div>
@@ -198,8 +216,8 @@
 <!-- 打印专用：屏幕上隐藏，打印时显示 -->
 <div id="print-sheet"></div>
 
-<script src="music.js?v=18"></script>
-<script src="writing.js?v=18"></script>
-<script src="app.js?v=18"></script>
+<script src="music.js?v=19"></script>
+<script src="writing.js?v=19"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

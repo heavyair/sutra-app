@@ -945,11 +945,15 @@
       '《' + state.sutra.title + '》 · 共 ' + state.totalChars + ' 字 · ' +
       d.getFullYear() + ' 年 ' + (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日';
     $('done-overlay').classList.remove('hidden');
-    // 标记完成：公开作品自此 7 日后焚化；匿名完成显示焚化提示
+    $('done-main').classList.remove('hidden');
+    $('done-cremated').classList.add('hidden');
+    // 标记完成并渲染去向选择（陈列 / 焚化；注册用户多一个私藏）
+    renderFarewell(null);
     if (state.work && state.work.id) {
-      api('/api/works/' + state.work.id + '/complete', { method: 'POST' }).catch(function () {});
+      api('/api/works/' + state.work.id + '/complete', { method: 'POST' })
+        .then(function (res) { if (res && res.ok) renderFarewell(res.work); })
+        .catch(function () {});
     }
-    $('done-cremate-hint').classList.toggle('hidden', !!getToken());
     // 写字时生成的音乐：录制收尾并随作品保存
     try {
       music.stopRecording(function (blob) {
@@ -978,6 +982,93 @@
   });
   $('btn-done-pdf').addEventListener('click', printWork);
   $('btn-done-share').addEventListener('click', shareWork);
+
+  /* ---------- 9b. 完成后去向：陈列 / 焚化 ---------- */
+  var FAREWELL_MODES = [
+    { id: 'keep', label: '私藏', loginOnly: true },
+    { id: 'public', label: '陈列七日' },
+    { id: 'cremate', label: '焚化' },
+  ];
+  function farewellModeOf(work) {
+    if (work && work.farewell_mode) return work.farewell_mode;
+    return getToken() ? 'keep' : 'public';
+  }
+  function renderFarewell(work) {
+    var logged = !!getToken();
+    var mode = farewellModeOf(work);
+    var box = $('farewell-modes');
+    box.innerHTML = '';
+    FAREWELL_MODES.forEach(function (m) {
+      if (m.loginOnly && !logged) return;
+      var b = document.createElement('button');
+      b.className = 'chip' + (m.id === mode ? ' active' : '');
+      b.textContent = m.label;
+      b.addEventListener('click', function () { chooseFarewell(m.id, null); });
+      box.appendChild(b);
+    });
+    $('farewell-days-row').classList.toggle('hidden', mode !== 'cremate');
+    if (mode === 'cremate' && work && work.farewell_days != null) {
+      markFarewellDay(work.farewell_days);
+    }
+    updateFarewellNote(work, mode);
+  }
+  function markFarewellDay(days) {
+    var chips = $('farewell-days-row').querySelectorAll('.chip');
+    chips.forEach(function (c) {
+      c.classList.toggle('active', parseInt(c.dataset.days, 10) === days);
+    });
+  }
+  function updateFarewellNote(work, mode) {
+    var note = '';
+    if (mode === 'keep') note = '已私藏 · 容量够用时一直保留';
+    else if (mode === 'public') note = '公众陈列中 · 七日后焚化';
+    else if (work && work.farewell_days != null) {
+      var pre = work.is_public ? '公众陈列中 · ' : '';
+      note = pre + (work.farewell_days <= 0 ? '今日焚化' : work.farewell_days + ' 日后焚化');
+    }
+    $('farewell-note').textContent = note;
+  }
+  function chooseFarewell(mode, days) {
+    if (!state.work || !state.work.id) return;
+    if (mode === 'cremate' && days == null) {
+      // 只展开时间选择，不调接口
+      var box = $('farewell-modes');
+      box.querySelectorAll('.chip').forEach(function (c) {
+        c.classList.toggle('active', c.textContent === '焚化');
+      });
+      $('farewell-days-row').classList.remove('hidden');
+      $('farewell-note').textContent = '选择焚化时间（最多七日）';
+      return;
+    }
+    if (mode === 'cremate' && days === 0) {
+      if (!confirm('确定现在焚化此作吗？形化去，功德留存。')) return;
+      api('/api/works/' + state.work.id + '/cremate', { method: 'POST' })
+        .then(function (res) {
+          if (res && res.ok) {
+            $('done-main').classList.add('hidden');
+            $('done-cremated').classList.remove('hidden');
+            state.work = null;
+          } else { alert('焚化失败，请重试'); }
+        }).catch(function () { alert('焚化失败，请重试'); });
+      return;
+    }
+    api('/api/works/' + state.work.id + '/complete',
+        { method: 'POST', body: JSON.stringify({ mode: mode, days: days || 7 }) })
+      .then(function (res) { if (res && res.ok) renderFarewell(res.work); })
+      .catch(function () {});
+  }
+  $('farewell-days-row').addEventListener('click', function (e) {
+    var t = e.target.closest('.chip');
+    if (!t) return;
+    markFarewellDay(parseInt(t.dataset.days, 10));
+    chooseFarewell('cremate', parseInt(t.dataset.days, 10));
+  });
+  $('btn-cremated-lib').addEventListener('click', function () {
+    $('done-overlay').classList.add('hidden');
+    state.flowToken++;
+    if (state.musicOn) { music.stop(); state.musicOn = false; }
+    showScreen('screen-library');
+  });
 
   /* ---------- 10. 欣赏 ---------- */
   function openAppreciate() {
@@ -1048,10 +1139,12 @@
       var b = document.createElement('button');
       b.className = 'work-card';
       var pct = w.chars_total ? Math.round(w.chars_done / w.chars_total * 100) : 0;
+      var fw = (w.farewell_days == null) ? '' :
+        (w.farewell_days <= 0 ? ' · 今日焚化' : ' · ' + w.farewell_days + '日后焚化');
       b.innerHTML =
         '<div class="wc-title">《' + escapeHtml(w.title || '') + '》</div>' +
         '<div class="wc-meta">' + w.chars_done + ' / ' + w.chars_total + ' 字 · ' +
-        fmtTime(w.updated_at) + (w.owner_type === 'anon' ? ' · 匿名' : '') + '</div>' +
+        fmtTime(w.updated_at) + (w.owner_type === 'anon' ? ' · 匿名' : '') + fw + '</div>' +
         '<div class="wc-bar"><i style="width:' + pct + '%"></i></div>';
       b.addEventListener('click', function () { openWork(w.id); });
       el.appendChild(b);

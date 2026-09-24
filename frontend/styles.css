@@ -286,3 +286,8 @@ button:active { transform: scale(0.97); }
 .storage-banner { margin: 10px 16px 0; padding: 10px 14px; border-radius: 10px;
   background: #fbf3df; border: 1px solid #e3cf9d; color: #7a5c22; font-size: 13px; line-height: 1.6; }
 .storage-banner b { font-weight: 600; }
+
+/* 完成后去向选择 */
+.farewell-block { margin: 4px 0 8px; padding: 10px 0 2px; border-top: 1px solid var(--line); }
+.farewell-title { text-align: center; font-size: 13px; color: var(--ink-dim); margin: 0 0 8px; letter-spacing: 2px; }
+.farewell-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 8px; }

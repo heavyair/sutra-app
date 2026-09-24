@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""七日焚化：删除 7 天前完成的公开作品（含逐字数据与录音文件）。
+"""七日焚化：删除已到焚化时刻的作品（含逐字数据与录音文件）。
 
-公开作品（匿名）自完成 7 日后化去；注册用户作品不受影响。
+去向由用户在完成时选择：陈列七日 / 定时焚化（最多七日）/ 即刻焚化；
+注册用户私藏作品 farewell_at 为 NULL，不受影响。
 幂等，建议每日凌晨由 cron 执行：
     docker exec sutra-app python3 /app/backend/cleanup_expired.py
 """
@@ -11,7 +12,6 @@ import sys
 
 DB_PATH = os.environ.get("SUTRA_DB", "/data/sutra.db")
 AUDIO_DIR = os.environ.get("SUTRA_AUDIO_DIR", "/app/backend/uploads/audio")
-RETENTION_DAYS = int(os.environ.get("SUTRA_PUBLIC_RETENTION_DAYS", "7"))
 
 
 def main():
@@ -22,9 +22,8 @@ def main():
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
         """SELECT id, audio_path FROM works
-           WHERE is_public = 1 AND completed_at IS NOT NULL
-             AND completed_at < datetime('now', ?)""",
-        (f"-{RETENTION_DAYS} days",),
+           WHERE farewell_at IS NOT NULL
+             AND farewell_at < datetime('now')"""
     ).fetchall()
     removed = 0
     for w in rows:
@@ -40,7 +39,7 @@ def main():
         print(f"cremated work {wid}")
     conn.commit()
     conn.close()
-    print(f"done: {removed} public work(s) cremated after {RETENTION_DAYS}d")
+    print(f"done: {removed} work(s) cremated")
     return 0
 
 
