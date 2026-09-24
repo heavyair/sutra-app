@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1a1611">
 <title>抄经 · 静心</title>
-<link rel="stylesheet" href="styles.css?v=23">
+<link rel="stylesheet" href="styles.css?v=24">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@600&display=swap">
 </head>
@@ -190,7 +190,13 @@
         <button id="btn-workview-play" class="btn-secondary" style="display:none">▶ 落笔放映</button>
         <button id="btn-workview-pdf" class="btn-secondary" style="display:none">生成 PDF</button>
         <button id="btn-workview-share" class="btn-secondary" style="display:none">分享</button>
+        <button id="btn-workview-dedicate" class="btn-secondary" style="display:none">🪷 回向</button>
         <button id="btn-workview-delete" class="btn-ghost" style="display:none">删除</button>
+      </div>
+      <div id="dedication-block" class="dedication-block hidden">
+        <div class="dedication-label">🪷 回向文</div>
+        <p id="dedication-text" class="dedication-text"></p>
+        <p id="dedication-meta" class="picker-hint"></p>
       </div>
     </div>
     <div id="workview-grid" class="workview-grid"></div>
@@ -229,11 +235,37 @@
   </div>
 </div>
 
+<!-- 回向对话框 -->
+<div id="dedicate-overlay" class="picker-overlay hidden">
+  <div class="picker-card dedicate-card">
+    <h3>🪷 回向</h3>
+    <p class="picker-hint">字迹将化烟而去，唯留尘埃与回向文。此后不可再欣赏、续写，请郑重。</p>
+    <label class="dedicate-label2" for="dedicate-target">回向对象</label>
+    <input id="dedicate-target" class="text-input" maxlength="40" placeholder="法界一切众生">
+    <div class="dedicate-label2">回向文</div>
+    <p id="dedicate-preview" class="dedicate-preview"></p>
+    <div class="inkplay-bar">
+      <button id="btn-dedicate-confirm" class="btn-primary">开始回向</button>
+      <button id="btn-dedicate-cancel" class="btn-ghost">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 回向仪式：读文 + 化烟 -->
+<div id="ceremony-overlay" class="hidden">
+  <div class="ceremony-veil"></div>
+  <div class="ceremony-banner">
+    <div class="dedication-label">🪷 回向文</div>
+    <div id="ceremony-text" class="ceremony-text"></div>
+    <div id="ceremony-status" class="ceremony-status">字迹化烟中……</div>
+  </div>
+</div>
+
 <!-- 打印专用：屏幕上隐藏，打印时显示 -->
 <div id="print-sheet"></div>
 
-<script src="music.js?v=23"></script>
-<script src="writing.js?v=23"></script>
-<script src="app.js?v=23"></script>
+<script src="music.js?v=24"></script>
+<script src="writing.js?v=24"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>

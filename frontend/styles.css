@@ -277,6 +277,19 @@ button:active { transform: scale(0.97); }
 }
 .wv-cell.done { border-color: var(--gold); }
 .wv-cell.todo { color: var(--ink-dim); opacity: 0.45; font-size: 18px; }
+/* 已回向：字迹化去，唯留尘埃 */
+.wv-cell.ash {
+  border-color: #c9c2ae; background-color: #ddd6c2;
+  background-image:
+    radial-gradient(circle at 22% 28%, rgba(105,98,80,.55) 1.1px, transparent 1.7px),
+    radial-gradient(circle at 68% 18%, rgba(105,98,80,.4) 1px, transparent 1.5px),
+    radial-gradient(circle at 45% 55%, rgba(105,98,80,.5) 1.2px, transparent 1.8px),
+    radial-gradient(circle at 80% 70%, rgba(105,98,80,.42) 1px, transparent 1.5px),
+    radial-gradient(circle at 30% 82%, rgba(105,98,80,.48) 1.1px, transparent 1.6px),
+    radial-gradient(circle at 58% 38%, rgba(120,112,92,.35) 1px, transparent 1.5px);
+  box-shadow: inset 0 0 8px rgba(120,110,85,.25);
+}
+.wv-cell.gone { border-color: var(--line); background: var(--card); opacity: .5; }
 
 .replay-card { width: min(92vw, 420px); }
 .replay-stage { position: relative; width: 100%; aspect-ratio: 3/4; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--paper); }
@@ -297,3 +310,29 @@ button:active { transform: scale(0.97); }
 .inkplay-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .inkplay-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
 #inkplay-label { font-size: 14px; color: var(--ink-dim); }
+
+/* 回向 */
+.dedication-block { margin: 10px 16px 0; padding: 12px 14px; border-radius: 10px;
+  background: #f7f1e3; border: 1px solid #e0d0a8; }
+.dedication-label { font-size: 13px; letter-spacing: 3px; color: #8a6d2f; margin-bottom: 6px; }
+.dedication-text { font-size: 15px; line-height: 2; color: var(--ink); margin: 0;
+  font-family: "Songti SC", "Noto Serif CJK SC", serif; }
+.dedicate-card { width: min(92vw, 420px); }
+.dedicate-label2 { display: block; font-size: 13px; color: var(--ink-dim); margin: 10px 0 4px; }
+.text-input { width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 15px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); }
+.dedicate-preview { font-size: 14px; line-height: 2; color: var(--ink);
+  font-family: "Songti SC", "Noto Serif CJK SC", serif;
+  background: #f7f1e3; border: 1px solid #e0d0a8; border-radius: 8px; padding: 10px 12px; margin: 4px 0 0; }
+
+/* 回向仪式 */
+#ceremony-overlay { position: fixed; inset: 0; z-index: 80; }
+.ceremony-veil { position: absolute; inset: 0; background: rgba(20, 16, 10, 0.55); }
+.ceremony-banner { position: absolute; top: 0; left: 0; right: 0; padding: 18px 20px 14px;
+  background: linear-gradient(to bottom, rgba(24,19,12,.96), rgba(24,19,12,.88));
+  border-bottom: 1px solid #8a6d2f; pointer-events: auto; max-height: 46vh; overflow-y: auto; }
+.ceremony-text { font-size: 17px; line-height: 2.1; color: #e8dcc0;
+  font-family: "Songti SC", "Noto Serif CJK SC", serif; letter-spacing: 1px; }
+.ceremony-text .ch-read { color: #ffd978; text-shadow: 0 0 8px rgba(255, 217, 120, .6); }
+.ceremony-status { margin-top: 8px; font-size: 13px; color: #a89468; letter-spacing: 2px; }
+.ceremony-done-mark { color: #ffd978; font-size: 20px; letter-spacing: 4px; text-align: center; margin-top: 6px; }

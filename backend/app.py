@@ -189,6 +189,11 @@ def migrate_works():
             """UPDATE works SET farewell_mode = 'public'
                WHERE farewell_mode IS NULL AND farewell_at IS NOT NULL"""
         )
+    # 回向：dedicated_at / dedication_target / dedication_text / ash_cells（幂等补列）
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(works)").fetchall()]
+    for _col in ("dedicated_at", "dedication_target", "dedication_text", "ash_cells"):
+        if _col not in cols:
+            conn.execute(f"ALTER TABLE works ADD COLUMN {_col} TEXT")
     conn.execute(
         """CREATE TABLE IF NOT EXISTS work_chars (
              id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -700,7 +705,19 @@ def _work_json(w):
         "completed_at": w["completed_at"] if "completed_at" in keys else None,
         "farewell_at": farewell_at, "farewell_days": farewell_days,
         "farewell_mode": w["farewell_mode"] if "farewell_mode" in keys else None,
+        "dedicated_at": w["dedicated_at"] if "dedicated_at" in keys else None,
+        "dedication_target": w["dedication_target"] if "dedication_target" in keys else None,
+        "dedication_text": w["dedication_text"] if "dedication_text" in keys else None,
+        "ash_cells": _parse_ash(w["ash_cells"]) if "ash_cells" in keys else [],
     }
+
+
+def _parse_ash(raw):
+    try:
+        v = json.loads(raw or "[]")
+        return sorted(set(int(x) for x in v)) if isinstance(v, list) else []
+    except Exception:
+        return []
 
 
 @app.route("/api/works", methods=["POST"])
@@ -827,6 +844,9 @@ def work_save_char(wid):
     if role not in ("owner", "writer"):
         conn.close()
         return jsonify({"ok": False, "message": "无权修改"}), 403
+    if "dedicated_at" in w.keys() and w["dedicated_at"]:
+        conn.close()
+        return jsonify({"ok": False, "message": "此作已回向，不可再写"}), 400
     conn.execute(
         """INSERT INTO work_chars (work_id, pos, ch, pen, strokes, updated_at)
            VALUES (?, ?, ?, ?, ?, datetime('now'))
@@ -854,6 +874,9 @@ def work_delete_char(wid, pos):
     if role not in ("owner", "writer"):
         conn.close()
         return jsonify({"ok": False, "message": "无权修改"}), 403
+    if "dedicated_at" in w.keys() and w["dedicated_at"]:
+        conn.close()
+        return jsonify({"ok": False, "message": "此作已回向，不可再改"}), 400
     conn.execute("DELETE FROM work_chars WHERE work_id = ? AND pos = ?", (wid, pos))
     conn.execute(
         """UPDATE works SET chars_done = (SELECT COUNT(*) FROM work_chars WHERE work_id = ?),
@@ -986,6 +1009,56 @@ def work_share(wid):
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "share_token": token})
+
+
+DEDICATION_TEMPLATE = ("愿以此抄经功德，回向{target}。"
+                       "愿以此功德，庄严佛净土，上报四重恩，下济三途苦；"
+                       "若有见闻者，悉发菩提心，尽此一报身，同生极乐国。")
+
+
+@app.route("/api/works/<int:wid>/dedicate", methods=["POST"])
+def work_dedicate(wid):
+    """回向：仅登录作者。生成回向文；字迹化烟（删逐字笔画与录音），
+    留灰尘格与回向文作纪念；清除焚化安排（清理脚本只看 farewell_at）。"""
+    user, err = require_user()
+    if err:
+        return err
+    conn = get_db()
+    w = conn.execute("SELECT * FROM works WHERE id = ?", (wid,)).fetchone()
+    if not w or _work_role(w, user) != "owner":
+        conn.close()
+        return jsonify({"ok": False, "message": "仅作者可回向"}), 403
+    if w["owner_type"] != "user":
+        conn.close()
+        return jsonify({"ok": False, "message": "仅登录用户的作品可回向"}), 403
+    keys = w.keys()
+    if "dedicated_at" in keys and w["dedicated_at"]:
+        conn.close()
+        return jsonify({"ok": False, "message": "已经回向过了"}), 400
+    data = request.get_json(silent=True) or {}
+    target = (data.get("target") or "").strip()[:40] or "法界一切众生"
+    rows = conn.execute("SELECT pos FROM work_chars WHERE work_id = ?", (wid,)).fetchall()
+    ash = sorted(set(r["pos"] for r in rows))
+    if not ash:
+        conn.close()
+        return jsonify({"ok": False, "message": "还没有写字"}), 400
+    text = DEDICATION_TEMPLATE.format(target=target)
+    conn.execute("DELETE FROM work_chars WHERE work_id = ?", (wid,))
+    if w["audio_path"]:
+        try:
+            os.remove(os.path.join(AUDIO_DIR, os.path.basename(w["audio_path"])))
+        except OSError:
+            pass
+    conn.execute(
+        """UPDATE works SET dedicated_at = datetime('now'), dedication_target = ?,
+               dedication_text = ?, ash_cells = ?, audio_path = NULL,
+               farewell_at = NULL, farewell_mode = 'dedicated',
+               updated_at = datetime('now') WHERE id = ?""",
+        (target, text, json.dumps(ash), wid),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "dedication_text": text, "ash_cells": ash})
 
 
 @app.route("/api/works/<int:wid>/audio", methods=["POST"])

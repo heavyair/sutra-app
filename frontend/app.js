@@ -45,6 +45,7 @@
     paraEndFading: false, // 段末标点淡出中：等它淡完才算段落结束，期间忽略落笔/橡皮
     work: null,        // 当前作品（服务端）：{id, anon_key, ...}
     workData: null,    // 作品查看器数据：{work, chars}
+    workShare: '',     // 查看器打开时的 share token（分享链接直达）
     audioBlobUrl: null, // 查看器音频 blob URL（带鉴权取回的录音）
     pauses: [],        // 笔画间停顿时长（ms），用于学习书写节奏
     pendingTimer: 0,   // 完成判定的延迟计时器
@@ -1164,6 +1165,7 @@
       var pct = w.chars_total ? Math.round(w.chars_done / w.chars_total * 100) : 0;
       var fw = (w.farewell_days == null) ? '' :
         (w.farewell_days <= 0 ? ' · 今日焚化' : ' · ' + w.farewell_days + '日后焚化');
+      if (w.dedicated_at) fw = ' · 🪷 已回向';
       b.innerHTML =
         '<div class="wc-title">《' + escapeHtml(w.title || '') + '》</div>' +
         '<div class="wc-meta">' + w.chars_done + ' / ' + w.chars_total + ' 字 · ' +
@@ -1201,6 +1203,7 @@
         state.font = f;
         state.work = res.work;
         state.workData = res;
+        state.workShare = share || '';
         state.workImages = []; // viewer 的 PDF 按笔迹记录渲染，不用会话快照
         renderWorkView(res, share);
         showScreen('screen-work');
@@ -1240,13 +1243,22 @@
     var byPos = {};
     res.chars.forEach(function (c) { byPos[c.pos] = c; });
     state.workCharsByPos = byPos;
-    // 字格：写过的字可点回放，没写的显示淡字
+    var dedicated = !!w.dedicated_at;
+    var ashSet = {};
+    (w.ash_cells || []).forEach(function (p) { ashSet[p] = 1; });
+    // 字格：写过的字可点回放，没写的显示淡字；已回向则只显示尘埃
     var grid = $('workview-grid');
     grid.innerHTML = '';
     var fontStack = state.font.stack;
     for (var i = 0; i < state.chars.length; i++) {
       (function (pos) {
         var cell = document.createElement('div');
+        if (dedicated) {
+          // 纪念态：写过的格子留尘埃，其余空
+          cell.className = ashSet[pos] ? 'wv-cell ash' : 'wv-cell gone';
+          grid.appendChild(cell);
+          return;
+        }
         var saved = byPos[pos];
         var ch = state.chars[pos];
         if (saved) {
@@ -1269,12 +1281,29 @@
         grid.appendChild(cell);
       })(i);
     }
-    // 按钮：续写（写完则隐藏）；分享/删除仅作者
+    // 按钮：续写（写完则隐藏）；分享/删除仅作者；回向仅登录作者且未回向
     var finished = w.chars_done >= w.chars_total && w.chars_total > 0;
-    $('btn-workview-continue').style.display = finished ? 'none' : '';
-    $('btn-workview-play').style.display = w.chars_done > 0 ? '' : 'none';
-    $('btn-workview-pdf').style.display = w.chars_done > 0 ? '' : 'none';
     var isOwner = w.role === 'owner';
+    var canDedicate = isOwner && getToken() && !dedicated && w.chars_done > 0;
+    $('btn-workview-dedicate').style.display = canDedicate ? '' : 'none';
+    if (dedicated) {
+      // 纪念态：不可再欣赏（无放映/PDF/回放/续写），展示尘埃与回向文
+      $('btn-workview-continue').style.display = 'none';
+      $('btn-workview-play').style.display = 'none';
+      $('btn-workview-pdf').style.display = 'none';
+      $('workview-meta').textContent =
+        w.chars_done + ' 字 · 已回向 · 尘归尘，功德圆满';
+      var db = $('dedication-block');
+      db.classList.remove('hidden');
+      $('dedication-text').textContent = w.dedication_text || '';
+      $('dedication-meta').textContent =
+        (w.dedication_target ? '回向：' + w.dedication_target + ' · ' : '') + fmtTime(w.dedicated_at);
+    } else {
+      $('dedication-block').classList.add('hidden');
+      $('btn-workview-continue').style.display = finished ? 'none' : '';
+      $('btn-workview-play').style.display = w.chars_done > 0 ? '' : 'none';
+      $('btn-workview-pdf').style.display = w.chars_done > 0 ? '' : 'none';
+    }
     $('btn-workview-share').style.display = (isOwner && getToken()) ? '' : 'none';
     $('btn-workview-delete').style.display = isOwner ? '' : 'none';
   }
@@ -1319,9 +1348,15 @@
     api('/api/works/' + w.id + '/share', { method: 'POST' }).then(function (res) {
       if (!res || !res.ok) { alert(res && res.message || '分享失败'); return; }
       var url = location.origin + location.pathname + '#w=' + w.id + '&share=' + res.share_token;
-      var done = function () { alert('分享链接已复制，发给朋友即可查看'); };
-      if (navigator.clipboard) navigator.clipboard.writeText(url).then(done, function () { prompt('复制分享链接：', url); });
-      else prompt('复制分享链接：', url);
+      var title = '《' + (w.title || '心经') + '》抄经作品';
+      var text = '我抄的《' + (w.title || '心经') + '》，点开欣赏，还可看落笔放映。';
+      if (navigator.share) {
+        navigator.share({ title: title, text: text, url: url }).catch(function () {});
+      } else {
+        var done = function () { alert('分享链接已复制，发给朋友即可查看'); };
+        if (navigator.clipboard) navigator.clipboard.writeText(url).then(done, function () { prompt('复制分享链接：', url); });
+        else prompt('复制分享链接：', url);
+      }
     }).catch(function () { alert('网络异常'); });
   });
 
@@ -1333,6 +1368,195 @@
       else alert('删除失败');
     });
   });
+
+  /* ---------- 回向 ---------- */
+  function dedicationTextFor(target) {
+    // 与服务端 DEDICATION_TEMPLATE 保持一致
+    return '愿以此抄经功德，回向' + target + '。愿以此功德，庄严佛净土，上报四重恩，下济三途苦；若有见闻者，悉发菩提心，尽此一报身，同生极乐国。';
+  }
+  function defaultDedicateTarget() {
+    try { return localStorage.getItem('sutra_dedicate_target') || '法界一切众生'; }
+    catch (e) { return '法界一切众生'; }
+  }
+  function updateDedicatePreview() {
+    var t = ($('dedicate-target').value || '').trim() || '法界一切众生';
+    $('dedicate-preview').textContent = dedicationTextFor(t);
+  }
+
+  $('btn-workview-dedicate').addEventListener('click', function () {
+    $('dedicate-target').value = defaultDedicateTarget();
+    updateDedicatePreview();
+    $('dedicate-overlay').classList.remove('hidden');
+  });
+  $('dedicate-target').addEventListener('input', updateDedicatePreview);
+  $('btn-dedicate-cancel').addEventListener('click', function () {
+    $('dedicate-overlay').classList.add('hidden');
+  });
+  $('btn-dedicate-confirm').addEventListener('click', function () {
+    var w = state.workData && state.workData.work;
+    if (!w) return;
+    var target = ($('dedicate-target').value || '').trim() || '法界一切众生';
+    try { localStorage.setItem('sutra_dedicate_target', target); } catch (e) {}
+    if (!confirm('回向后字迹化烟，唯留尘埃与回向文，不可再欣赏、续写。确定回向吗？')) return;
+    $('btn-dedicate-confirm').disabled = true;
+    api('/api/works/' + w.id + '/dedicate', { method: 'POST', body: JSON.stringify({ target: target }) })
+      .then(function (res) {
+        $('btn-dedicate-confirm').disabled = false;
+        if (!res || !res.ok) { alert(res && res.message || '回向失败'); return; }
+        $('dedicate-overlay').classList.add('hidden');
+        playDedicationCeremony(res.dedication_text, res.ash_cells || []);
+      })
+      .catch(function () { $('btn-dedicate-confirm').disabled = false; alert('网络异常'); });
+  });
+
+  /* 庄严读出回向文：有中文嗓音则朗读，否则静默（只高亮） */
+  function speakDedication(text, cb) {
+    var called = false;
+    function done() { if (!called) { called = true; cb(); } }
+    try {
+      var synth = window.speechSynthesis;
+      if (!synth) { done(); return; }
+      synth.cancel();
+      var vs = [];
+      try { vs = synth.getVoices() || []; } catch (e) {}
+      var zh = null, i;
+      for (i = 0; i < vs.length; i++) if (/^zh([-_]CN)?$/i.test(vs[i].lang || '')) { zh = vs[i]; break; }
+      if (!zh) for (i = 0; i < vs.length; i++) if (/^zh/i.test(vs[i].lang || '')) { zh = vs[i]; break; }
+      if (!zh) { done(); return; }
+      var u = new SpeechSynthesisUtterance(text);
+      u.voice = zh; u.lang = zh.lang || 'zh-CN';
+      u.rate = 0.82; u.pitch = 0.9;
+      u.onend = done; u.onerror = done;
+      synth.speak(u);
+      setTimeout(done, text.length * 600 + 15000); // 兜底
+    } catch (e) { done(); }
+  }
+
+  /* 单字化烟：墨点化作上升的烟，落下尘埃 */
+  function smokeCell(cell, dur, done) {
+    var finished = false;
+    function fin() { if (!finished) { finished = true; done(); } }
+    function toAsh() { cell.className = 'wv-cell ash'; }
+    var src = cell.querySelector('canvas');
+    var r = cell.getBoundingClientRect();
+    if (!src || !r.width) { toAsh(); fin(); return; }
+    var dpr = Math.min(2, window.devicePixelRatio || 1);
+    var W = Math.max(2, Math.round(r.width)), H = Math.max(2, Math.round(r.height));
+    var ov = document.createElement('canvas');
+    ov.width = W * dpr; ov.height = H * dpr;
+    ov.style.cssText = 'position:fixed;left:' + r.left + 'px;top:' + r.top + 'px;width:' + W + 'px;height:' + H +
+      'px;pointer-events:none;z-index:90;';
+    document.body.appendChild(ov);
+    var ctx = ov.getContext('2d');
+    ctx.scale(dpr, dpr);
+    var off = document.createElement('canvas');
+    off.width = W; off.height = H;
+    var octx = off.getContext('2d');
+    try { octx.drawImage(src, 0, 0, W, H); } catch (e) {}
+    var parts = [];
+    try {
+      var img = octx.getImageData(0, 0, W, H).data;
+      for (var y = 0; y < H; y += 3) {
+        for (var x = 0; x < W; x += 3) {
+          if (img[(y * W + x) * 4 + 3] > 40) {
+            parts.push({ x: x, y: y, vx: (Math.random() - 0.5) * 0.6, vy: -(0.5 + Math.random() * 1.1),
+              life: 1, decay: 0.008 + Math.random() * 0.012, sz: 1 + Math.random() * 2.2,
+              ph: Math.random() * 6.28, tone: 60 + Math.random() * 40 });
+          }
+        }
+      }
+    } catch (e) {}
+    if (parts.length > 900) {
+      var keep = [];
+      for (var k = 0; k < 900; k++) keep.push(parts[(Math.random() * parts.length) | 0]);
+      parts = keep;
+    }
+    src.style.transition = 'opacity ' + Math.round(dur * 0.55) + 'ms';
+    src.style.opacity = '0';
+    var start = performance.now();
+    (function frame(now) {
+      var t = (now - start) / dur;
+      ctx.clearRect(0, 0, W, H);
+      var alive = false, i, p;
+      for (i = 0; i < parts.length; i++) {
+        p = parts[i];
+        if (p.life <= 0) continue;
+        alive = true;
+        p.x += p.vx + Math.sin(now / 300 + p.ph) * 0.4;
+        p.y += p.vy;
+        p.vx *= 0.995; p.vy *= 0.995;
+        p.life -= p.decay;
+        var al = Math.max(0, Math.min(1, p.life)) * 0.75;
+        var g = Math.round(Math.min(235, p.tone + (1 - p.life) * 120));
+        ctx.fillStyle = 'rgba(' + g + ',' + g + ',' + (g - 8) + ',' + al.toFixed(3) + ')';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, Math.max(0.4, p.sz * (1.6 - p.life * 0.6)), 0, 6.29);
+        ctx.fill();
+      }
+      if (t < 1 && alive) requestAnimationFrame(frame);
+      else {
+        try { document.body.removeChild(ov); } catch (e) {}
+        toAsh(); fin();
+      }
+    })(start);
+    setTimeout(fin, dur + 1500); // 兜底
+  }
+
+  /* 回向仪式：读文的同时，字迹逐字化烟 */
+  function playDedicationCeremony(text, ashCells) {
+    var overlay = $('ceremony-overlay');
+    var txtEl = $('ceremony-text');
+    var statusEl = $('ceremony-status');
+    txtEl.innerHTML = '';
+    var spans = [];
+    text.split('').forEach(function (ch) {
+      var s = document.createElement('span');
+      s.textContent = ch;
+      txtEl.appendChild(s); spans.push(s);
+    });
+    statusEl.textContent = '字迹化烟中……';
+    overlay.classList.remove('hidden');
+    try { $('workview-grid').scrollIntoView({ block: 'start' }); } catch (e) {}
+    var n = ashCells.length;
+    var estTotal = Math.max(6000, text.length * 340); // 估计读文时长
+    var perCell = Math.min(1400, Math.max(280, estTotal / Math.max(1, n)));
+    var ttsDone = false, animDone = false, finDone = false, highlighted = 0;
+    var hlTimer = setInterval(function () {
+      if (highlighted < spans.length) { spans[highlighted].className = 'ch-read'; highlighted++; }
+    }, Math.max(60, estTotal / Math.max(1, spans.length)));
+    function finish() {
+      if (!(ttsDone && animDone) || finDone) return;
+      finDone = true;
+      clearInterval(hlTimer);
+      spans.forEach(function (s) { s.className = 'ch-read'; });
+      statusEl.innerHTML = '<div class="ceremony-done-mark">尘归尘 · 功德圆满 🪷</div>';
+      setTimeout(function () {
+        overlay.classList.add('hidden');
+        var w = state.workData && state.workData.work;
+        if (w) {
+          var d = new Date();
+          function p2(x) { return ('0' + x).slice(-2); }
+          w.dedicated_at = d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' +
+            p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds());
+          w.dedication_text = text;
+          w.ash_cells = ashCells;
+          w.has_audio = false;
+        }
+        renderWorkView(state.workData, state.workShare);
+        try { window.scrollTo(0, 0); } catch (e) {}
+      }, 3200);
+    }
+    speakDedication(text, function () { ttsDone = true; finish(); });
+    var grid = $('workview-grid');
+    var idx = 0;
+    (function next() {
+      if (idx >= n) { animDone = true; finish(); return; }
+      var cell = grid.children[ashCells[idx]];
+      idx++;
+      if (!cell) { next(); return; }
+      smokeCell(cell, perCell, next);
+    })();
+  }
 
   /* ---------- 回放：重演一字的落笔过程 ---------- */
   var replayPad = null;
