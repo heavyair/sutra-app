@@ -341,24 +341,28 @@ button:active { transform: scale(0.97); }
 .list-card { width: min(80vw, 360px); }
 .list-cap { text-align: center; font-size: 13px; color: var(--ink-dim); margin-top: 8px; letter-spacing: 2px; }
 
-/* 整纸：宣纸竖排（右起直排），多张纸上下排布，只收录写过的字 */
+/* 整纸：横排，复刻 PDF 版式（等比缩小），只收录写过的字 */
 .dual-sheet { display: flex; flex-direction: column; gap: 22px; padding: 14px 0 34px; align-items: center; }
 .paper-sheet {
-  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-content: flex-start;
   background: linear-gradient(135deg, #f7f1e0 0%, #f1e7cd 60%, #e9dcc0 100%);
   border: 1px solid #d8c69a; border-radius: 6px;
   box-shadow: 0 4px 18px rgba(0,0,0,.45), inset 0 0 40px rgba(150,120,70,.18);
-  padding: 24px 20px; margin: 0 14px; width: calc(100% - 28px); max-width: 760px; box-sizing: border-box;
+  padding: 24px 20px; margin: 0 14px 18px; width: calc(100% - 28px); max-width: 760px; box-sizing: border-box;
 }
-/* 页眉标题：横排，与 PDF 题字一致；过长时 JS 自动缩小字号保一行居中 */
-.sheet-head {
-  flex: 0 0 100%; text-align: center; white-space: nowrap; overflow: hidden;
-  font-size: 30px; color: #2b2118; letter-spacing: 12px; text-indent: 12px;
-  margin: 4px 0 12px; line-height: 1.4;
+/* 整纸版式复刻 PDF（等比缩小 0.6）：标题 28→17，字格 120→72，间距 10→6 */
+.sheet-title {
+  text-align: center; white-space: nowrap; overflow: hidden;
+  font-size: 17px; color: #2b2118; letter-spacing: 6px; text-indent: 6px;
+  margin: 4px 0 6px; line-height: 1.4;
 }
-/* 字格：与 PDF 同管线（drawStatic 原样渲染，CSS 缩小），72px、8px 字距 */
+.sheet-meta {
+  text-align: center; white-space: nowrap; overflow: hidden;
+  font-size: 11px; color: #8a7a5f; margin-bottom: 12px;
+}
+.sheet-grid { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+/* 字格：与 PDF 同管线（drawStatic 原样渲染，CSS 缩小），72px、6px 字距，描边同 PDF */
 .sheet-cell { width: 72px; height: 72px; margin: 0; }
-.sheet-cell img { width: 100%; height: 100%; display: block; }
+.sheet-cell img { width: 100%; height: 100%; display: block; border: 1px solid #ccc; border-radius: 2px; box-sizing: border-box; }
 .sheet-cell.burned { box-shadow: inset 0 0 10px rgba(110,100,75,.4); border-radius: 4px; }
 .work-empty-hint { color: var(--ink-dim); text-align: center; font-size: 13px; padding: 6px 0 20px; }
 .ceremony-title-row { display: flex; align-items: center; justify-content: space-between; }

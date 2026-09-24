@@ -1389,21 +1389,22 @@
     };
   }
 
-  // 标题一行居中：宽度不够则逐级缩小字号（字距同比），直到放下为止
-  function fitSheetHead(head) {
-    var size = 30; // 与 .sheet-head 初始字号一致
-    head.style.fontSize = size + 'px';
-    for (var i = 0; i < 24 && size > 12; i++) {
-      if (head.scrollWidth <= head.clientWidth + 1) break;
-      size -= 2;
-      head.style.fontSize = size + 'px';
-      var ls = Math.round(size * 0.4);
-      head.style.letterSpacing = ls + 'px';
-      head.style.textIndent = ls + 'px'; // 抵消字距尾随，保持视觉居中
+  // 单行自适应：宽度不够则逐级缩小字号（字距同比），直到放下为止
+  function fitSheetText(el, startSize, minSize) {
+    var size = startSize;
+    el.style.fontSize = size + 'px';
+    for (var i = 0; i < 24 && size > minSize; i++) {
+      if (el.scrollWidth <= el.clientWidth + 1) break;
+      size -= 1;
+      el.style.fontSize = size + 'px';
+      var ls = Math.round(size * 0.35);
+      el.style.letterSpacing = ls + 'px';
+      el.style.textIndent = ls + 'px'; // 抵消字距尾随，保持视觉居中
     }
   }
 
-  // 整纸：横排，与 PDF 同管线（240px drawStatic 原样渲染，只按 CSS 缩小）；标题作页眉
+  // 整纸：复刻 PDF 版式（等比缩小）：标题"抄经作品"＋《经名》·字数·日期＋字格；
+  // 字图与 PDF 同管线（240px drawStatic 原样渲染，只按 CSS 缩小）
   function renderSheet(box, api, ctx) {
     box.innerHTML = ''; api.cardByPos = {};
     var cells = api.cells || [];
@@ -1412,14 +1413,17 @@
       return;
     }
     var sheet = mkEl('div', 'paper-sheet');
-    var headEl = null;
-    if (api.title) {
-      headEl = mkEl('div', 'sheet-head');
-      headEl.textContent = '《' + api.title + '》';
-      var fontStack = (state.font && state.font.stack) || '';
-      if (fontStack) headEl.style.fontFamily = fontStack;
-      sheet.appendChild(headEl);
-    }
+    var titleEl = mkEl('div', 'sheet-title');
+    titleEl.textContent = '抄经作品';
+    var fontStack = (state.font && state.font.stack) || '';
+    if (fontStack) titleEl.style.fontFamily = fontStack;
+    sheet.appendChild(titleEl);
+    var now = new Date();
+    var metaEl = mkEl('div', 'sheet-meta');
+    metaEl.textContent = '《' + (api.title || '') + '》 · ' + cells.length + ' 字 · ' +
+      now.getFullYear() + '-' + (now.getMonth() + 1) + '-' + now.getDate();
+    sheet.appendChild(metaEl);
+    var grid = mkEl('div', 'sheet-grid');
     cells.forEach(function (c) {
       var d = mkEl('div', 'sheet-cell');
       var burned = c.ash || (ctx.isBurned && ctx.isBurned(c.pos));
@@ -1430,10 +1434,12 @@
         (function (pos) { d.addEventListener('click', function () { ctx.onTap(pos); }); })(c.pos);
       }
       api.cardByPos[c.pos] = d;
-      sheet.appendChild(d);
+      grid.appendChild(d);
     });
+    sheet.appendChild(grid);
     box.appendChild(sheet);
-    if (headEl) fitSheetHead(headEl); // 标题过长则缩小字号，保证一行居中
+    fitSheetText(titleEl, 17, 12);
+    fitSheetText(metaEl, 11, 8);
     // 兼容旧调用：单张纸，直接滚到顶部
     api._drawPage = function () {
       if (sheet && sheet.scrollIntoView) sheet.scrollIntoView({ block: 'start', behavior: 'smooth' });
