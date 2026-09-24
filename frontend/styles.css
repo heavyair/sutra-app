@@ -291,3 +291,14 @@ button:active { transform: scale(0.97); }
 .farewell-block { margin: 4px 0 8px; padding: 10px 0 2px; border-top: 1px solid var(--line); }
 .farewell-title { text-align: center; font-size: 13px; color: var(--ink-dim); margin: 0 0 8px; letter-spacing: 2px; }
 .farewell-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 8px; }
+
+/* 作品查看：用户笔迹 */
+.wv-cell { position: relative; overflow: hidden; }
+.wv-ink { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* 落笔放映 */
+.inkplay-card { width: min(94vw, 480px); }
+.inkplay-stage { position: relative; width: 100%; aspect-ratio: 3/4; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--paper); }
+.inkplay-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.inkplay-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+#inkplay-label { font-size: 14px; color: var(--ink-dim); }

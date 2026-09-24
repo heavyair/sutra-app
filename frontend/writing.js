@@ -534,4 +534,38 @@
       this._replayRaf = 0;
     }
   };
+
+  /* 静态渲染一字的笔迹（作品查看 / PDF 用）：不动画，一次画完。
+   * rec: {pen, strokes:[[[x,y,t,w]...]]} 或 {auto:'punct'}；ch 仅标点盖印用 */
+  WritingPad.drawStatic = function (canvas, rec, ch) {
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.lineCap = ctx.lineJoin = 'round';
+    if (rec && rec.auto === 'punct') {
+      var px = Math.min(canvas.width, canvas.height) * 0.52 * 0.55;
+      ctx.save();
+      ctx.fillStyle = '#2b2118';
+      ctx.font = px + 'px "Kaiti SC","KaiTi","STKaiti",serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(ch || '', canvas.width / 2, canvas.height * 0.44);
+      ctx.restore();
+      return;
+    }
+    var fake = Object.create(WritingPad.prototype);
+    fake.ictx = ctx;
+    fake.pen = (rec && rec.pen) || 'maobi';
+    fake._bristleDist = 0;
+    fake._bristlePhase = Math.random() * Math.PI * 2;
+    var unit = Math.min(canvas.width, canvas.height) || 1;
+    ((rec && rec.strokes) || []).forEach(function (st) {
+      for (var i = 1; i < st.length; i++) {
+        var a = st[i - 1], b = st[i];
+        WritingPad.prototype._drawSegment.call(fake,
+          { x: a[0] * canvas.width, y: a[1] * canvas.height },
+          { x: b[0] * canvas.width, y: b[1] * canvas.height },
+          (b[3] || 0.03) * unit);
+      }
+    });
+  };
 })(window);
