@@ -42,6 +42,7 @@
     workImages: [],
     flowToken: 0,
     completing: false,
+    paraEndFading: false, // 段末标点淡出中：等它淡完才算段落结束，期间忽略落笔/橡皮
     work: null,        // 当前作品（服务端）：{id, anon_key, ...}
     workData: null,    // 作品查看器数据：{work, chars}
     pauses: [],        // 笔画间停顿时长（ms），用于学习书写节奏
@@ -704,7 +705,7 @@
         state.lastStrokeEnd = 0;
       },
       onStrokeEnd: function (cov, n) {
-        if (state.completing) return;
+        if (state.completing || state.paraEndFading) return;
         state.lastStrokeEnd = Date.now();
         // 最小运笔：超过字区最大边的一半（防误触），单笔画字也能通过
         var minLen = pad.bbox ? Math.max(pad.bbox.w, pad.bbox.h) * 0.5 : 60;
@@ -787,8 +788,15 @@
     state.lastCharEnd = Date.now(); // 标点不计入节奏样本，但更新等待起点
     state.charIndex++;
     if (state.charIndex >= state.chars.length) {
-      if (state.paraIndex < state.paras.length - 1) nextParagraph();
-      else showDone();
+      // 段末标点：先盖印展示，等它淡出后才算段落结束
+      var token = state.flowToken;
+      state.paraEndFading = true;
+      pad.fadeOut(1200, function () {
+        state.paraEndFading = false;
+        if (token !== state.flowToken) return;
+        if (state.paraIndex < state.paras.length - 1) nextParagraph();
+        else showDone();
+      });
     } else {
       beginChar();
     }
@@ -844,7 +852,7 @@
 
   // 橡皮：一下清空重写（若在"缓缓隐藏"中点橡皮，视同继续改写）
   $('btn-eraser').addEventListener('click', function () {
-    if (!pad) return;
+    if (!pad || state.paraEndFading) return; // 段末标点淡出中：不打断，等它自然结束段落
     cancelPendingComplete();
     if (state.completing) {
       state.completing = false;
