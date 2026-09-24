@@ -230,7 +230,7 @@ button:active { transform: scale(0.97); }
 #work-head { text-align: center; padding: 18px 16px 6px; }
 #work-head h3 { margin: 0 0 6px; font-size: 24px; letter-spacing: 8px; }
 #work-head p { margin: 0; color: var(--ink-dim); font-size: 13px; }
-#work-sheet {
+.work-sheet {
   display: flex; flex-direction: column; gap: 14px;
   padding: 12px 20px 8px; align-items: center;
 }
@@ -238,7 +238,10 @@ button:active { transform: scale(0.97); }
   background: var(--paper); border-radius: 12px; padding: 10px;
   box-shadow: 0 2px 10px rgba(0,0,0,.3); width: 200px;
 }
+#workview-sheet .work-char { cursor: pointer; }
 .work-char img { display: block; width: 100%; border-radius: 6px; }
+/* 燃过的纸卡：留灰烬 */
+.work-char.burned { box-shadow: 0 2px 10px rgba(0,0,0,.3), inset 0 0 12px rgba(110,100,75,.35); }
 .work-empty { color: var(--ink-dim); text-align: center; padding: 40px 0; }
 
 /* 打印：屏幕隐藏，打印时只显示作品 */
@@ -269,22 +272,7 @@ button:active { transform: scale(0.97); }
 
 #workview-head { padding: 0 16px; }
 .workview-actions { display: flex; gap: 10px; margin: 12px 0; }
-.workview-grid {
-  display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; padding: 0 16px;
-}
-.wv-cell {
-  aspect-ratio: 1; border: 1px solid var(--line); border-radius: 8px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 22px; background: var(--card); color: var(--ink);
-}
-.wv-cell.done { border-color: var(--gold); }
-.wv-cell.todo { color: var(--ink-dim); opacity: 0.45; font-size: 18px; }
-/* 已回向：字迹化去，唯留尘埃（灰烬纹理每格随机生成，见 setAsh） */
-.wv-cell.ash {
-  border-color: #c9c2ae;
-  box-shadow: inset 0 0 8px rgba(120,110,85,.25);
-}
-.wv-cell.gone { border-color: var(--line); background: var(--card); opacity: .5; }
+/* 作品查看已改欣赏式纸卡（.work-char），旧字格样式移除 */
 
 .replay-card { width: min(92vw, 420px); }
 .replay-stage { position: relative; width: 100%; aspect-ratio: 3/4; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--paper); }
@@ -295,10 +283,7 @@ button:active { transform: scale(0.97); }
 .farewell-title { text-align: center; font-size: 13px; color: var(--ink-dim); margin: 0 0 8px; letter-spacing: 2px; }
 .farewell-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 8px; }
 
-/* 作品查看：用户笔迹 */
-.wv-cell { position: relative; overflow: hidden; }
-.wv-ink { position: absolute; inset: 0; width: 100%; height: 100%; }
-
+/* 作品查看：欣赏式纸卡（.work-char），见上方 */
 /* 落笔放映 */
 .inkplay-card { width: min(94vw, 480px); }
 .inkplay-stage { position: relative; width: 100%; aspect-ratio: 3/4; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--paper); margin: 0 auto; }
@@ -320,13 +305,16 @@ button:active { transform: scale(0.97); }
   font-family: "Songti SC", "Noto Serif CJK SC", serif;
   background: #f7f1e3; border: 1px solid #e0d0a8; border-radius: 8px; padding: 10px 12px; margin: 4px 0 0; }
 
-/* 回向仪式 */
+/* 回向仪式：横幅轻薄可收起，不遮挡纸燃烧 */
 #ceremony-overlay { position: fixed; inset: 0; z-index: 80; }
-.ceremony-veil { position: absolute; inset: 0; background: rgba(20, 16, 10, 0.55); }
-.ceremony-banner { position: absolute; top: 0; left: 0; right: 0; padding: 18px 20px 14px;
-  background: linear-gradient(to bottom, rgba(24,19,12,.96), rgba(24,19,12,.88));
-  border-bottom: 1px solid #8a6d2f; pointer-events: auto; max-height: 46vh; overflow-y: auto; }
-.ceremony-text { font-size: 17px; line-height: 2.1; color: #e8dcc0;
+.ceremony-veil { position: absolute; inset: 0; background: rgba(20, 16, 10, 0.28); }
+.ceremony-banner { position: absolute; top: 0; left: 0; right: 0; padding: 10px 16px 8px;
+  background: linear-gradient(to bottom, rgba(24,19,12,.94), rgba(24,19,12,.82));
+  border-bottom: 1px solid #8a6d2f; max-height: 32vh; overflow-y: auto; }
+.ceremony-title-row { display: flex; align-items: center; justify-content: space-between; }
+#ceremony-fold { padding: 2px 8px; font-size: 12px; }
+.ceremony-banner.collapsed #ceremony-text { display: none; }
+.ceremony-text { font-size: 15px; line-height: 1.9; color: #e8dcc0;
   font-family: "Songti SC", "Noto Serif CJK SC", serif; letter-spacing: 1px; }
 .ceremony-text .ch-read { color: #ffd978; text-shadow: 0 0 8px rgba(255, 217, 120, .6); }
 .ceremony-status { margin-top: 8px; font-size: 13px; color: #a89468; letter-spacing: 2px; }

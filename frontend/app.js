@@ -1246,41 +1246,42 @@
     var dedicated = !!w.dedicated_at;
     var ashSet = {};
     (w.ash_cells || []).forEach(function (p) { ashSet[p] = 1; });
-    // 字格：写过的字可点回放，没写的显示淡字；已回向则只显示尘埃
-    var grid = $('workview-grid');
-    grid.innerHTML = '';
-    var fontStack = state.font.stack;
+    // 欣赏式纸卡：写过的字按书写顺序展示手写纸卡（点卡回放落笔）；已回向则只显示尘埃卡
+    var sheet = $('workview-sheet');
+    sheet.innerHTML = '';
+    state.workCardByPos = {};
     for (var i = 0; i < state.chars.length; i++) {
       (function (pos) {
-        var cell = document.createElement('div');
-        if (dedicated) {
-          // 纪念态：写过的格子留尘埃（每格随机灰烬纹理），其余空
-          cell.className = 'wv-cell gone';
-          if (ashSet[pos]) setAsh(cell);
-          grid.appendChild(cell);
-          return;
-        }
+        if (dedicated && !ashSet[pos]) return;
         var saved = byPos[pos];
+        if (!dedicated && !saved) return; // 未写的字不占位，底部统一提示
         var ch = state.chars[pos];
-        if (saved) {
-          // 已写：渲染用户笔迹，不再显示印刷体原文
-          cell.className = 'wv-cell done';
-          var cv = document.createElement('canvas');
-          cv.width = cv.height = 120;
-          cv.className = 'wv-ink';
-          WritingPad.drawStatic(cv, saved.strokes || {}, ch);
-          cell.appendChild(cv);
-          cell.title = '点击回放第 ' + (pos + 1) + ' 字';
-          cell.addEventListener('click', function () { openReplay(pos); });
+        var card = document.createElement('div');
+        card.className = 'work-char';
+        var img = document.createElement('img');
+        if (dedicated) {
+          img.src = randomAsh();
+          card.classList.add('burned');
         } else {
-          // 未写：淡字占位
-          cell.className = 'wv-cell todo';
-          cell.style.fontFamily = fontStack;
-          cell.textContent = ch;
-          if (isPunct(ch)) cell.style.fontSize = '13px';
+          var cv = document.createElement('canvas');
+          cv.width = cv.height = 240;
+          WritingPad.drawStatic(cv, saved.strokes || {}, ch);
+          img.src = cv.toDataURL('image/png');
+          img.alt = ch;
+          card.title = '点击回放第 ' + (pos + 1) + ' 字';
+          card.addEventListener('click', function () { openReplay(pos); });
         }
-        grid.appendChild(cell);
+        card.appendChild(img);
+        sheet.appendChild(card);
+        state.workCardByPos[pos] = card;
       })(i);
+    }
+    var undone = w.chars_total - w.chars_done;
+    if (!dedicated && undone > 0) {
+      var hint = document.createElement('div');
+      hint.className = 'work-empty-hint';
+      hint.textContent = '还有 ' + undone + ' 字未写 · 点「续写」继续';
+      sheet.appendChild(hint);
     }
     // 按钮：续写（写完则隐藏）；分享/删除仅作者；回向仅登录作者且未回向
     var finished = w.chars_done >= w.chars_total && w.chars_total > 0;
@@ -1514,20 +1515,21 @@
     while (ASH_VARIANTS.length < 12) ASH_VARIANTS.push(makeAshTexture());
     return ASH_VARIANTS[(Math.random() * ASH_VARIANTS.length) | 0];
   }
-  function setAsh(cell) {
-    cell.className = 'wv-cell ash';
-    cell.style.backgroundImage = 'url(' + randomAsh() + ')';
-    cell.style.backgroundSize = 'cover';
+  function setAsh(card) {
+    // 纸卡燃尽：手写图换成随机纸灰
+    var img = card.querySelector('img');
+    if (img) img.src = randomAsh();
+    card.classList.add('burned');
   }
 
-  /* 一格纸燃烧：边缘先起火光，墨迹化作火星与烟上升，燃尽后随机落下纸灰 */
-  function burnCell(cell, dur, done) {
+  /* 一张纸卡燃烧：边缘先起火光，墨迹化作火星与烟上升，燃尽后随机落下纸灰 */
+  function burnCell(card, dur, done) {
     var finished = false;
     function fin() { if (!finished) { finished = true; done(); } }
     function cleanup() { try { document.body.removeChild(ov); } catch (e) {} }
-    var src = cell.querySelector('canvas');
-    var r = cell.getBoundingClientRect();
-    if (!src || !r.width) { setAsh(cell); fin(); return; }
+    var src = card.querySelector('img');
+    var r = src ? src.getBoundingClientRect() : card.getBoundingClientRect();
+    if (!src || !r.width) { setAsh(card); fin(); return; }
     var dpr = Math.min(2, window.devicePixelRatio || 1);
     var W = Math.max(2, Math.round(r.width)), H = Math.max(2, Math.round(r.height));
     var ov = document.createElement('canvas');
@@ -1616,9 +1618,9 @@
         ctx.fill();
       }
       if (t < 1 && alive) requestAnimationFrame(frame);
-      else { cleanup(); setAsh(cell); fin(); }
+      else { cleanup(); setAsh(card); fin(); }
     })(start);
-    setTimeout(function () { cleanup(); setAsh(cell); fin(); }, dur + 1500); // 兜底
+    setTimeout(function () { cleanup(); setAsh(card); fin(); }, dur + 1500); // 兜底
   }
 
   /* 回向仪式：朗读进度驱动回向文高亮、进度条与纸燃烧（三者严格同步） */
@@ -1636,10 +1638,12 @@
     });
     statusEl.textContent = '字迹化烟中……';
     barEl.style.width = '0%';
+    $('ceremony-banner').classList.remove('collapsed');
+    $('ceremony-fold').textContent = '收起 ↑';
     overlay.classList.remove('hidden');
-    try { $('workview-grid').scrollIntoView({ block: 'start' }); } catch (e) {}
+    try { $('workview-sheet').scrollIntoView({ block: 'start' }); } catch (e) {}
     var n = ashCells.length;
-    var grid = $('workview-grid');
+    var cardByPos = state.workCardByPos || {};
     var readPos = 0;             // 朗读到的字符位置（进度之源）
     var boundarySeen = false;    // TTS 是否给出 boundary 事件
     var silent = false;          // 无中文嗓音：静默仪式
@@ -1654,9 +1658,9 @@
       while (ignited < b) { igniteCell(ignited); ignited++; }
     }
     function igniteCell(i) {
-      var cell = grid.children[ashCells[i]];
-      if (!cell) { burned++; checkFinish(); return; }
-      burnCell(cell, 750 + Math.random() * 550, function () { burned++; checkFinish(); });
+      var card = cardByPos[ashCells[i]];
+      if (!card) { burned++; checkFinish(); return; }
+      burnCell(card, 750 + Math.random() * 550, function () { burned++; checkFinish(); });
     }
     function checkFinish() {
       if (finDone || !ttsDone || burned < n) return;
@@ -1702,6 +1706,12 @@
       checkFinish();
     }, 120);
   }
+
+  $('ceremony-fold').addEventListener('click', function () {
+    var b = $('ceremony-banner');
+    var collapsed = b.classList.toggle('collapsed');
+    $('ceremony-fold').textContent = collapsed ? '展开 ↓' : '收起 ↑';
+  });
 
   /* ---------- 回放：重演一字的落笔过程 ---------- */
   var replayPad = null;
