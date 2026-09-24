@@ -10,7 +10,7 @@
       "timbre": "soft_sine",
       "gamma": {
         "hz": 40,
-        "vol": 0.03
+        "vol": 0.015
       }
     },
     "title": "般若波罗蜜多心经",
@@ -27,7 +27,7 @@
       "timbre": "bamboo",
       "gamma": {
         "hz": 40,
-        "vol": 0.03
+        "vol": 0.015
       }
     },
     "title": "道德经 · 第一章",
@@ -44,7 +44,7 @@
       "timbre": "soft_sine",
       "gamma": {
         "hz": 40,
-        "vol": 0.03
+        "vol": 0.015
       }
     },
     "title": "太上老君说常清静经",
@@ -61,7 +61,7 @@
       "timbre": "bell",
       "gamma": {
         "hz": 40,
-        "vol": 0.03
+        "vol": 0.015
       }
     },
     "title": "千手千眼观世音菩萨广大圆满无碍大悲心陀罗尼（大悲咒）",
@@ -78,7 +78,7 @@
       "timbre": "soft_sine",
       "gamma": {
         "hz": 40,
-        "vol": 0.03
+        "vol": 0.015
       }
     },
     "status": "待补充全文",

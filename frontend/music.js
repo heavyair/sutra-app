@@ -254,7 +254,7 @@
     var cfg = this.config.gamma || {};
     if (cfg.off) return;
     var freq = cfg.hz || 40;
-    var vol = (cfg.vol !== undefined && cfg.vol !== null) ? cfg.vol : 0.03;
+    var vol = (cfg.vol !== undefined && cfg.vol !== null) ? cfg.vol : 0.015;
     if (!(vol > 0)) return;
     var osc = ctx.createOscillator();
     osc.type = 'sine';
