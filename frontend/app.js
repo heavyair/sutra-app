@@ -1403,7 +1403,7 @@
     }
   }
 
-  // 整纸：横排大字，与 PDF 生成一致（print-grid 同款字号字距）；标题作页眉
+  // 整纸：横排，与 PDF 同管线（240px drawStatic 原样渲染，只按 CSS 缩小）；标题作页眉
   function renderSheet(box, api, ctx) {
     box.innerHTML = ''; api.cardByPos = {};
     var cells = api.cells || [];
@@ -1423,7 +1423,7 @@
     cells.forEach(function (c) {
       var d = mkEl('div', 'sheet-cell');
       var burned = c.ash || (ctx.isBurned && ctx.isBurned(c.pos));
-      d.appendChild(burned ? ashImg() : inkImg(c.saved, c.ch, 240, true));
+      d.appendChild(burned ? ashImg() : inkImg(c.saved, c.ch, 240));
       if (burned) d.classList.add('burned');
       if (ctx.onTap) {
         d.style.cursor = 'pointer';
