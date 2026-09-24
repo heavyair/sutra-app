@@ -5,7 +5,7 @@
  * - 每部经文配一组参数：{ root_midi, tempo_bpm, timbre, mood, gamma }
  * - 声部：
  *     L0 持续低音 drone（一直开）
- *     L1 花落：稀疏下行滑音，非音阶、无节拍（书写慢/停时浮现）
+ *     L1 轻磬：纯净柔和的磬声，余韵悠长（书写慢/停时浮现）
  *     L2 和声铺底 pad（p > 0.45；写得快时降到三成）
  *     L3 小磬 + 泉消 + 细雨（书写慢/停时浮现）
  *     L4 gamma 脑波层（一直开）
@@ -96,40 +96,36 @@
     this.layers.L0.gain.setTargetAtTime(1, ctx.currentTime, 2);
   };
 
-  // L1 花落：一片花瓣 = 下行滑音（非音阶、无节拍），极疏
-  MusicEngine.prototype._petal = function (when) {
-    var ctx = this.ctx;
-    var f0 = 900 + Math.random() * 500;
-    var f1 = 500 + Math.random() * 300;
-    var dur = 0.35 + Math.random() * 0.25;
-    var osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(f0, when);
-    osc.frequency.exponentialRampToValueAtTime(f1, when + dur);
-    var g = ctx.createGain();
-    g.gain.setValueAtTime(0, when);
-    g.gain.linearRampToValueAtTime(0.045, when + 0.06);
-    g.gain.exponentialRampToValueAtTime(0.0001, when + dur + 0.9);
-    osc.connect(g);
-    g.connect(this.layers.L1);
-    osc.start(when);
-    osc.stop(when + dur + 1.1);
+  // L1 轻磬：纯净柔和，一声、余韵悠长（近谐泛音，无滑音）
+  MusicEngine.prototype._lightChime = function (when) {
+    var ctx = this.ctx, self = this;
+    var base = midiToFreq(this.config.root_midi + 24); // 高两个八度
+    [[1, 1.0], [2.003, 0.35], [2.997, 0.15]].forEach(function (pr) {
+      var osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = base * pr[0];
+      var g = ctx.createGain();
+      g.gain.setValueAtTime(0, when);
+      g.gain.linearRampToValueAtTime(0.030 * pr[1], when + 0.08); // 轻起音
+      g.gain.exponentialRampToValueAtTime(0.0001, when + 6 + Math.random() * 4);
+      osc.connect(g);
+      g.connect(self.layers.L1);
+      osc.start(when);
+      osc.stop(when + 12);
+    });
   };
 
-  MusicEngine.prototype._startPetals = function () {
+  MusicEngine.prototype._startLightChimes = function () {
     var self = this;
     function tick() {
       if (!self.playing) return;
       // 写得快时根本不触发，只调度下一次检查
       if (self._nature > 0.45) {
         var t = self.ctx.currentTime + 0.05;
-        self._petal(t);
-        if (Math.random() < 0.3) {
-          var n = 1 + Math.floor(Math.random() * 2);
-          for (var i = 0; i < n; i++) self._petal(t + 0.4 + Math.random() * 0.5 + i * 0.35);
-        }
+        self._lightChime(t);
+        if (Math.random() < 0.2) self._lightChime(t + 2.5 + Math.random() * 3); // 偶尔应和一声
       }
-      self.timers.push(setTimeout(tick, 7000 + Math.random() * 11000));
+      self.timers.push(setTimeout(tick, 12000 + Math.random() * 18000));
     }
     tick();
   };
@@ -275,7 +271,7 @@
     this._nature = 1;            // 自然声部电平 = 1 - activity
     this._startDrone();
     this._startGamma();
-    this._startPetals();
+    this._startLightChimes();
     this._startPad();
     this._startChime();
     this._startSpring();
