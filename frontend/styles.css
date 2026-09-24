@@ -145,6 +145,8 @@ button:active { transform: scale(0.97); }
   transition: opacity 0.6s ease;
 }
 #intro-overlay.hidden { display: none; }
+/* 通用隐藏：所有用 .hidden 控制显隐的元素 */
+.hidden { display: none !important; }
 #intro-overlay.fading { opacity: 0; }
 #intro-title {
   font-size: 40px; letter-spacing: 14px; color: #3a2f1d;
