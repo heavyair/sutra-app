@@ -51,6 +51,9 @@
     charGap: 0,        // 当前字开始前等待了多久（上一字结束→本字第一笔）
     lastCharEnd: 0,    // 上一字完成的时间戳
     pacePushedFor: -1, // 已计入 paceHist 的字序号（防"继续改写"重复计入）
+    usualCharMs: 2500, // 用户通常的换字时间：加权统计，初值 2.5s（本机学习，跨会话保留）
+    writeHist: [],     // 最近 3 个字的书写时长，用于慢写判断
+    slowStreak: 0,     // 连续慢写字数：本字书写超过前两个字则 +1
   };
 
   var music = new MusicEngine();
@@ -63,7 +66,13 @@
   try {
     var _p = JSON.parse(localStorage.getItem('sutra_pauses') || '[]');
     if (Array.isArray(_p)) state.pauses = _p.filter(function (x) { return x > 0; }).slice(-60);
+    var _u = parseFloat(localStorage.getItem('sutra_usual_char') || '0');
+    if (_u >= 800 && _u <= 8000) state.usualCharMs = _u;
   } catch (e) {}
+
+  function saveUsualCharMs() {
+    try { localStorage.setItem('sutra_usual_char', String(Math.round(state.usualCharMs))); } catch (e) {}
+  }
 
   function recordPause(ms) {
     state.pauses.push(ms);
@@ -88,13 +97,29 @@
     var now = Date.now();
     var writeMs = state.charT0 ? Math.max(300, now - state.charT0) : 2000;
     var gapMs = Math.max(0, state.charGap || 0);
+    // 用户通常的换字时间：加权统计（新样本权重 0.35，初值 2.5s）；
+    // 长停笔按 3 倍 usual 封顶计入，不污染"通常"统计
+    var gapStat = Math.min(gapMs, 3 * state.usualCharMs);
+    state.usualCharMs = 0.35 * (writeMs + gapStat) + 0.65 * state.usualCharMs;
+    if (state.usualCharMs < 800) state.usualCharMs = 800;
+    if (state.usualCharMs > 8000) state.usualCharMs = 8000;
+    saveUsualCharMs();
+    // 慢写：本字书写时长超过前两个字
+    var wh = state.writeHist;
+    wh.push(writeMs);
+    if (wh.length > 3) wh.shift();
+    var n = wh.length;
+    var slowChar = n >= 3 && writeMs > wh[n - 2] && writeMs > wh[n - 3];
+    state.slowStreak = slowChar ? state.slowStreak + 1 : 0;
     var h = state.paceHist;
     h.push(writeMs + gapMs);
     if (h.length > 3) h.shift();
-    if (h.length < 3) return;
-    var a = h[0], b = h[1], c = h[2], e = 0.06; // 6% 容差，防抖动误判
-    if (c < b * (1 - e) && b < a * (1 - e)) setPace('fast');
-    else if (c > b * (1 + e) && b > a * (1 + e)) setPace('slow');
+    if (h.length >= 3) {
+      var a = h[0], b = h[1], c = h[2], e = 0.06; // 6% 容差，防抖动误判
+      if (c < b * (1 - e) && b < a * (1 - e)) setPace('fast');
+      else if (c > b * (1 + e) && b > a * (1 + e)) setPace('slow');
+    }
+    evaluateNature();
   }
 
   function setPace(p) {
@@ -103,14 +128,32 @@
     try { music.setActivity(p === 'fast' ? 1 : 0); } catch (err) {}
   }
 
-  // 长时间停笔（>12s）→ 直接视为慢（自然声浮现），不等下一字写完
+  // 自然声出现条件评估（每 2s + 每字完成后）：
+  // 停笔超过用户通常 5 个字的换字时间 → 高音（轻磬/小磬）；
+  // 慢写（本字超过前两个字）→ 泉消；连续慢写 4 字 → 细雨
+  function evaluateNature() {
+    try {
+      if (!music.setNatureFlags) return;
+      var now = Date.now(), gapMs = 0;
+      if (state.lastStrokeEnd) gapMs = now - state.lastStrokeEnd;            // 字内：笔间停顿
+      else if (state.lastCharEnd && !state.charT0) gapMs = now - state.lastCharEnd; // 字间：写完等待落笔
+      var flags = {
+        chime: gapMs > 5 * state.usualCharMs,
+        spring: state.slowStreak >= 1,
+        rain: state.slowStreak >= 4
+      };
+      music.setNatureFlags(flags);
+      if (flags.chime) setPace('slow'); // 长停笔直接视为慢，不等下一字写完
+    } catch (e) {}
+  }
+
   setInterval(function () {
     try {
       if (!$('screen-write').classList.contains('active')) return;
       if (state.completing) return;
-      if (state.lastStrokeEnd && Date.now() - state.lastStrokeEnd > 12000) setPace('slow');
+      evaluateNature();
     } catch (e) {}
-  }, 5000);
+  }, 2000);
 
   function cancelPendingComplete() {
     if (state.pendingTimer) { clearTimeout(state.pendingTimer); state.pendingTimer = 0; }
@@ -465,7 +508,10 @@
     state.charGap = 0;
     state.lastCharEnd = 0;
     state.pacePushedFor = -1;
+    state.writeHist = [];
+    state.slowStreak = 0;
     try { music.setActivity(0); } catch (e) {}
+    try { if (music.setNatureFlags) music.setNatureFlags({ chime: false, spring: false, rain: false }); } catch (e) {}
     pad.setFont(state.font.stack);
     pad.setPen(state.pen.id);
 
@@ -1050,7 +1096,10 @@
     state.charGap = 0;
     state.lastCharEnd = 0;
     state.pacePushedFor = -1;
+    state.writeHist = [];
+    state.slowStreak = 0;
     try { music.setActivity(0); } catch (e) {}
+    try { if (music.setNatureFlags) music.setNatureFlags({ chime: false, spring: false, rain: false }); } catch (e) {}
     pad.setFont(state.font.stack);
     pad.setPen(state.pen.id);
     if (!state.musicOn) { music.start(); state.musicOn = true; }

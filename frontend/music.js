@@ -11,6 +11,10 @@
  *     L4 gamma 脑波层（一直开）
  * - 书写 activity 0~1（0=静止/慢，1=疾书）：setActivity() 设目标，
  *   内部每 0.7s 平滑跟随；activity 高 → 自然声部淡出，只留 L0 + gamma
+ * - 自然声出现条件（setNatureFlags({chime, spring, rain})，由 app.js 按书写节奏评估）：
+ *     chime（高音：L1 轻磬 / L3 小磬）：停笔时间 > 用户通常 5 个字的换字时间
+ *     spring（泉消）：慢写（本字书写超过前两个字）
+ *     rain（细雨）：连续慢写 4 个字
  */
 (function (global) {
   'use strict';
@@ -119,8 +123,8 @@
     var self = this;
     function tick() {
       if (!self.playing) return;
-      // 写得快时根本不触发，只调度下一次检查
-      if (self._nature > 0.45) {
+      // 高音只在停笔足够久（条件成立）且非疾书时触发
+      if (self._chimeArmed) {
         var t = self.ctx.currentTime + 0.05;
         self._lightChime(t);
         if (Math.random() < 0.2) self._lightChime(t + 2.5 + Math.random() * 3); // 偶尔应和一声
@@ -173,7 +177,7 @@
     var self = this;
     function tick() {
       if (!self.playing) return;
-      if (self._nature > 0.5) self._chime(self.ctx.currentTime + 0.05);
+      if (self._chimeArmed) self._chime(self.ctx.currentTime + 0.05);
       self.timers.push(setTimeout(tick, 40000 + Math.random() * 60000));
     }
     tick();
@@ -190,11 +194,13 @@
     bp.frequency.value = 1100;
     bp.Q.value = 0.7;
     var g = ctx.createGain();
-    g.gain.value = 0.016;
+    g.gain.value = 0; // 初始静音，由门控按"慢写"条件淡入
+    this._springGain = g;
     var lfo = ctx.createOscillator();
     lfo.frequency.value = 0.045;
     var lg = ctx.createGain();
-    lg.gain.value = 0.008;
+    lg.gain.value = 0;
+    this._springLfoDepth = lg;
     lfo.connect(lg);
     lg.connect(g.gain);
     src.connect(bp);
@@ -215,14 +221,15 @@
     hp.type = 'highpass';
     hp.frequency.value = 6000;
     var g = ctx.createGain();
-    g.gain.value = 0.010;
+    g.gain.value = 0; // 初始静音，由门控按"连慢4字"条件淡入
+    this._rainGain = g;
     src.connect(hp);
     hp.connect(g);
     g.connect(this.layers.L3);
     src.start();
     function droplet() {
       if (!self.playing) return;
-      if (self._nature > 0.5) {
+      if (self._wantRain && self._nature > 0.5) {
         var t = self.ctx.currentTime + 0.05;
         var o = self.ctx.createOscillator();
         o.type = 'sine';
@@ -269,6 +276,10 @@
     this._activity = 0;          // 当前书写 activity（平滑值）
     this._activityTarget = 0;    // 目标：setActivity() 设置
     this._nature = 1;            // 自然声部电平 = 1 - activity
+    this._wantChime = false;     // 高音条件：停笔 > 通常5字
+    this._wantSpring = false;    // 泉消条件：慢写
+    this._wantRain = false;      // 细雨条件：连续慢写4字
+    this._chimeArmed = false;    // 高音实际可触发 = 条件成立且非疾书
     this._startDrone();
     this._startGamma();
     this._startLightChimes();
@@ -303,6 +314,15 @@
     this.start(); return true;
   };
 
+  /* 自然声出现条件：app.js 按书写节奏评估后传入
+   * {chime: 停笔>通常5字 → 高音（轻磬/小磬）, spring: 慢写 → 泉消, rain: 连慢4字 → 细雨} */
+  MusicEngine.prototype.setNatureFlags = function (f) {
+    f = f || {};
+    this._wantChime = !!f.chime;
+    this._wantSpring = !!f.spring;
+    this._wantRain = !!f.rain;
+  };
+
   /* 书写 activity：0=静止/慢，1=疾书；内部平滑跟随 */
   MusicEngine.prototype.setActivity = function (a) {
     this._activityTarget = Math.max(0, Math.min(1, a || 0));
@@ -321,6 +341,11 @@
     this.layers.L2.gain.setTargetAtTime(pg[2] * (1 - 0.7 * this._activity), t, 2.5);
     this.layers.L3.gain.setTargetAtTime(pg[3] * this._nature, t, 2.5);
     this.layers.L4.gain.setTargetAtTime(1, t, 2.5);
+    // 高音实际可触发 = 条件成立且非疾书；泉消/细雨按各自条件淡入淡出（疾书时 L3 总线已静音）
+    this._chimeArmed = this._wantChime && this._nature > 0.45;
+    if (this._springGain) this._springGain.gain.setTargetAtTime(0.016 * (this._wantSpring ? 1 : 0), t, 2.5);
+    if (this._springLfoDepth) this._springLfoDepth.gain.setTargetAtTime(0.008 * (this._wantSpring ? 1 : 0), t, 2.5);
+    if (this._rainGain) this._rainGain.gain.setTargetAtTime(0.010 * (this._wantRain ? 1 : 0), t, 2.5);
   };
 
   /* 核心接口：抄写进度 0~1（L2 和声铺底仍随进度加层；L1/L3 自然声只跟书写状态） */
