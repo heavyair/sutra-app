@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1a1611">
 <title>抄经 · 静心</title>
-<link rel="stylesheet" href="styles.css?v=31">
+<link rel="stylesheet" href="styles.css?v=32">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@600&display=swap">
 </head>
@@ -133,29 +133,21 @@
     </div>
   </section>
 
-  <!-- 5. 欣赏作品 -->
+  <!-- 5. 欣赏作品：只有纸，没有标题和按钮（标题写进纸里） -->
   <section id="screen-appreciate" class="screen">
-    <div id="work-head">
-      <h3 id="work-title"></h3>
-      <p id="work-meta"></p>
-    </div>
     <div id="appreciate-dual"></div>
+    <div class="foot-spacer"></div>
   </section>
 
-  <!-- 6. 作品查看：逐字回放 / 续写 / 分享 -->
+  <!-- 6. 作品查看：只有纸（标题写进纸里）；回向文保留展示；录音只供放映播放 -->
   <section id="screen-work" class="screen">
-    <div id="workview-head">
-      <h2 id="workview-title" class="workview-title"></h2>
-      <p id="workview-meta" class="picker-hint"></p>
-      <audio id="workview-audio" controls style="display:none;width:100%"></audio>
-      <div id="dedication-block" class="dedication-block hidden">
-        <div class="dedication-label">🪷 回向文</div>
-        <p id="dedication-text" class="dedication-text"></p>
-        <p id="dedication-meta" class="picker-hint"></p>
-      </div>
+    <div id="dedication-block" class="dedication-block hidden">
+      <div class="dedication-label">🪷 回向文</div>
+      <p id="dedication-text" class="dedication-text"></p>
+      <p id="dedication-meta" class="picker-hint"></p>
     </div>
+    <audio id="workview-audio" style="display:none"></audio>
     <div id="workview-dual"></div>
-    <div id="workview-hint" class="work-empty-hint"></div>
     <div class="foot-spacer"></div>
   </section>
 
@@ -237,6 +229,6 @@
 
 <script src="music.js?v=29"></script>
 <script src="writing.js?v=29"></script>
-<script src="app.js?v=31"></script>
+<script src="app.js?v=32"></script>
 </body>
 </html>

@@ -1219,10 +1219,10 @@
     wrap.appendChild(charBox); wrap.appendChild(sheetBox);
     mount.appendChild(wrap);
     var api = {
-      view: 'char', cells: [], total: 0, cardByPos: {},
+      view: 'char', cells: [], total: 0, title: '', cardByPos: {},
       pagerIdx: 0, sheetIdx: 0,
-      render: function (cells, total) {
-        api.cells = cells || []; api.total = total || 0;
+      render: function (cells, total, title) {
+        api.cells = cells || []; api.total = total || 0; api.title = title || '';
         api.pagerIdx = 0; api.sheetIdx = 0;
         renderActive();
       },
@@ -1254,7 +1254,7 @@
     return img;
   }
 
-  // 逐字：一张大纸卡，‹›/滑动逐字翻看，点卡回放
+  // 逐字：一列大纸卡，上下滚动浏览，点卡回放落笔（无按钮，翻页靠滚动）
   function renderPager(box, api, ctx) {
     box.innerHTML = ''; api.cardByPos = {};
     var cells = api.cells;
@@ -1262,107 +1262,89 @@
       box.innerHTML = '<div class="work-empty">还没有写完的字，回去继续吧。</div>';
       return;
     }
-    var pager = mkEl('div', 'char-pager');
-    var track = mkEl('div', 'pager-track');
-    cells.forEach(function (c) {
-      var cellWrap = mkEl('div', 'pager-cell');
-      var card = mkEl('div', 'work-char pager-card');
+    var list = mkEl('div', 'char-list');
+    cells.forEach(function (c, i) {
+      var row = mkEl('div', 'list-row');
+      var card = mkEl('div', 'work-char list-card');
       card.appendChild(cellImg(c, ctx, card));
-      card.title = '第 ' + (c.pos + 1) + ' 字 · 点击回放落笔';
       if (ctx.onTap) {
+        card.style.cursor = 'pointer';
         (function (pos) { card.addEventListener('click', function () { ctx.onTap(pos); }); })(c.pos);
       }
-      cellWrap.appendChild(card); track.appendChild(cellWrap);
+      var cap = mkEl('div', 'list-cap');
+      cap.textContent = '第 ' + (i + 1) + ' / ' + cells.length + ' 字 · ' + c.ch;
+      row.appendChild(card); row.appendChild(cap);
+      list.appendChild(row);
       api.cardByPos[c.pos] = card;
     });
-    pager.appendChild(track);
-    var nav = mkEl('div', 'pager-nav');
-    var prev = mkEl('button', 'btn-ghost pager-btn'); prev.textContent = '‹';
-    var label = mkEl('span', 'pager-label');
-    var next = mkEl('button', 'btn-ghost pager-btn'); next.textContent = '›';
-    function go(i) {
-      api.pagerIdx = Math.max(0, Math.min(cells.length - 1, i));
-      track.style.transform = 'translateX(-' + (api.pagerIdx * 100) + '%)';
-      var c = cells[api.pagerIdx];
-      label.textContent = '第 ' + (api.pagerIdx + 1) + ' / ' + cells.length + ' 字 · ' + c.ch;
-    }
-    api._go = go;
-    prev.addEventListener('click', function () { go(api.pagerIdx - 1); });
-    next.addEventListener('click', function () { go(api.pagerIdx + 1); });
-    var sx = null;
-    pager.addEventListener('touchstart', function (e) { sx = e.touches[0].clientX; }, { passive: true });
-    pager.addEventListener('touchend', function (e) {
-      if (sx === null) return;
-      var dx = e.changedTouches[0].clientX - sx; sx = null;
-      if (dx < -40) go(api.pagerIdx + 1); else if (dx > 40) go(api.pagerIdx - 1);
-    }, { passive: true });
-    nav.appendChild(prev); nav.appendChild(label); nav.appendChild(next);
-    box.appendChild(pager); box.appendChild(nav);
-    go(Math.min(api.pagerIdx, cells.length - 1));
+    box.appendChild(list);
+    // 仪式燃烧跟随：把正在烧的字滚进视野
+    api._go = function (i) {
+      var row = list.children[Math.max(0, Math.min(cells.length - 1, i))];
+      if (row && row.scrollIntoView) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    };
   }
 
-  // 整纸：宣纸竖排（右起直排），多张纸可翻
+  // 整纸：宣纸竖排（右起直排）。只收录写过的字，从有字处起连续排布；
+  // 标题作卷首题字写进第一张纸；多张纸上下排布，翻页靠滚动（无按钮）
   function renderSheet(box, api, ctx) {
     box.innerHTML = ''; api.cardByPos = {};
-    var total = api.total, cells = api.cells;
-    var byPos = {};
-    cells.forEach(function (c) { byPos[c.pos] = c; });
-    var slots = [];
-    for (var p = 0; p < total; p++) slots.push(byPos[p] || null);
+    var items = []; // {titleCh} 或 {c}
+    if (api.title) {
+      String(api.title).split('').forEach(function (ch) { items.push({ titleCh: ch }); });
+    }
+    (api.cells || []).forEach(function (c) { items.push({ c: c }); });
+    if (!items.length) {
+      box.innerHTML = '<div class="work-empty">还没有写完的字，回去继续吧。</div>';
+      return;
+    }
     var pages = [];
-    for (var i = 0; i < slots.length; i += SHEET_CAP) pages.push(slots.slice(i, i + SHEET_CAP));
-    if (!pages.length) pages.push([]);
-    function drawPage(pi) {
-      api.sheetIdx = Math.max(0, Math.min(pages.length - 1, pi));
-      box.innerHTML = ''; api.cardByPos = {};
+    for (var i = 0; i < items.length; i += SHEET_CAP) pages.push(items.slice(i, i + SHEET_CAP));
+    var fontStack = (state.font && state.font.stack) || '';
+    pages.forEach(function (page) {
       var sheet = mkEl('div', 'paper-sheet');
-      pages[api.sheetIdx].forEach(function (c) {
+      page.forEach(function (it) {
         var d = mkEl('div', 'sheet-cell');
-        if (c) {
+        if (it.titleCh) {
+          d.classList.add('title-cell');
+          var s = mkEl('span', 'sheet-title-ch');
+          s.textContent = it.titleCh;
+          if (fontStack) s.style.fontFamily = fontStack;
+          d.appendChild(s);
+        } else {
+          var c = it.c;
           var burned = c.ash || (ctx.isBurned && ctx.isBurned(c.pos));
-          d.appendChild(burned ? ashImg() : inkImg(c.saved, c.ch, 120));
+          d.appendChild(burned ? ashImg() : inkImg(c.saved, c.ch, 200));
           if (burned) d.classList.add('burned');
           if (ctx.onTap) {
+            d.style.cursor = 'pointer';
             (function (pos) { d.addEventListener('click', function () { ctx.onTap(pos); }); })(c.pos);
           }
           api.cardByPos[c.pos] = d;
-        } else {
-          d.classList.add('blank');
         }
         sheet.appendChild(d);
       });
       box.appendChild(sheet);
-      if (pages.length > 1) {
-        var nav = mkEl('div', 'sheet-nav');
-        var prev = mkEl('button', 'btn-ghost pager-btn'); prev.textContent = '‹';
-        var label = mkEl('span', 'sheet-label');
-        label.textContent = '第 ' + (api.sheetIdx + 1) + ' / ' + pages.length + ' 张';
-        var next = mkEl('button', 'btn-ghost pager-btn'); next.textContent = '›';
-        prev.addEventListener('click', function () { drawPage(api.sheetIdx - 1); });
-        next.addEventListener('click', function () { drawPage(api.sheetIdx + 1); });
-        nav.appendChild(prev); nav.appendChild(label); nav.appendChild(next);
-        box.appendChild(nav);
-      }
-    }
-    api._drawPage = drawPage;
-    drawPage(api.sheetIdx);
+    });
+    // 兼容旧调用：滚动到第 pi 张纸
+    api._drawPage = function (pi) {
+      var sheets = box.querySelectorAll('.paper-sheet');
+      var t = sheets[Math.max(0, Math.min(sheets.length - 1, pi || 0))];
+      if (t && t.scrollIntoView) t.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      api.sheetIdx = pi || 0;
+    };
   }
 
   /* ---------- 10. 欣赏 ---------- */
   function openAppreciate() {
-    $('work-title').textContent = state.sutra ? '《' + state.sutra.title + '》' : '';
-    var d = new Date();
     var cc = collectWorkCells();
-    $('work-meta').textContent =
-      '已抄 ' + cc.cells.length + ' / ' + cc.total + ' 字 · ' +
-      d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
     if (!state.appreciateDual) {
       state.appreciateDual = createDualView($('appreciate-dual'), {
         onTap: function (pos) { openReplay(pos); },
         isBurned: function () { return false; }
       });
     }
-    state.appreciateDual.render(cc.cells, cc.total);
+    state.appreciateDual.render(cc.cells, cc.total, state.sutra ? state.sutra.title : '');
     showScreen('screen-appreciate');
   }
 
@@ -1499,15 +1481,11 @@
 
   function renderWorkView(res, share) {
     var w = res.work;
-    $('workview-title').textContent = '《' + (w.title || '') + '》';
-    $('workview-meta').textContent =
-      w.chars_done + ' / ' + w.chars_total + ' 字 · ' + fmtTime(w.updated_at) +
-      (w.owner_type === 'anon' ? ' · 匿名公开，可续写' : '');
-    // 音乐：写字时录下的
+    // 录音只供落笔放映播放，不再显示播放器（纸上无按钮）
     var au = $('workview-audio');
+    au.style.display = 'none';
     if (state.audioBlobUrl) { try { URL.revokeObjectURL(state.audioBlobUrl); } catch (e) {} state.audioBlobUrl = null; }
     if (w.has_audio) {
-      au.style.display = '';
       au.removeAttribute('src');
       var audioUrl = '/api/works/' + w.id + '/audio' + (share ? '?share=' + encodeURIComponent(share) : '');
       // <audio> 发不出 Authorization / X-Anon-Key，带鉴权取 blob 再播（登录用户私作直连会 404）
@@ -1551,16 +1529,11 @@
         isBurned: function () { return false; }
       });
     }
-    state.workviewDual.render(cells, state.chars.length);
-    var undone = w.chars_total - w.chars_done;
-    $('workview-hint').textContent =
-      (!dedicated && undone > 0) ? '还有 ' + undone + ' 字未写 · 点「续写」继续' : '';
+    state.workviewDual.render(cells, state.chars.length, w.title || '');
     // 功能按钮收拢进全局工具按钮：续写（写完则无）；分享/删除仅作者；回向仅登录作者且未回向
     setScreenTools(workviewTools());
     if (dedicated) {
       // 纪念态：不可再欣赏（无放映/PDF/回放/续写），展示尘埃与回向文
-      $('workview-meta').textContent =
-        w.chars_done + ' 字 · 已回向 · 尘归尘，功德圆满';
       var db = $('dedication-block');
       db.classList.remove('hidden');
       $('dedication-text').textContent = w.dedication_text || '';

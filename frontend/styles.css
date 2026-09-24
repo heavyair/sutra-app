@@ -335,30 +335,27 @@ button:active { transform: scale(0.97); }
   background: transparent; color: var(--ink-dim); font-size: 14px; letter-spacing: 4px; }
 .vt-btn.active { background: var(--gold); border-color: var(--gold); color: #1a1408; font-weight: 700; }
 
-/* 逐字：一张大纸卡，滑动/‹›逐字翻看 */
-.char-pager { overflow: hidden; }
-.pager-track { display: flex; transition: transform .35s ease; }
-.pager-cell { flex: 0 0 100%; display: flex; justify-content: center; padding: 8px 0 2px; }
-.pager-card { width: min(78vw, 340px); }
-.pager-nav { display: flex; align-items: center; justify-content: center; gap: 22px; margin: 10px 0 4px; }
-.pager-btn { font-size: 26px; padding: 2px 14px; }
-.pager-label { font-size: 13px; color: var(--ink-dim); letter-spacing: 1px; min-width: 110px; text-align: center; }
+/* 逐字：一列大纸卡，上下滚动浏览，点卡回放 */
+.char-list { display: flex; flex-direction: column; gap: 20px; padding: 14px 0 34px; align-items: center; }
+.list-card { width: min(80vw, 360px); }
+.list-cap { text-align: center; font-size: 13px; color: var(--ink-dim); margin-top: 8px; letter-spacing: 2px; }
 
-/* 整纸：宣纸竖排，一张纸 CAP 字 */
+/* 整纸：宣纸竖排（右起直排），多张纸上下排布，只收录写过的字 */
+.dual-sheet { display: flex; flex-direction: column; gap: 22px; padding: 14px 0 34px; align-items: center; }
 .paper-sheet {
   writing-mode: vertical-rl;
   height: 560px; overflow-x: auto; overflow-y: hidden;
   background: linear-gradient(135deg, #f7f1e0 0%, #f1e7cd 60%, #e9dcc0 100%);
   border: 1px solid #d8c69a; border-radius: 6px;
   box-shadow: 0 4px 18px rgba(0,0,0,.45), inset 0 0 40px rgba(150,120,70,.18);
-  padding: 24px 20px; margin: 10px 14px 4px;
+  padding: 24px 20px; margin: 0 14px; width: calc(100% - 28px); box-sizing: border-box;
 }
-.sheet-cell { display: inline-block; width: 34px; height: 34px; margin: 3px 4px; vertical-align: top; }
+.sheet-cell { display: inline-block; width: 44px; height: 44px; margin: 3px 5px; vertical-align: top; }
 .sheet-cell img { width: 100%; height: 100%; display: block; }
-.sheet-cell.blank { background: transparent; }
 .sheet-cell.burned { box-shadow: inset 0 0 10px rgba(110,100,75,.4); border-radius: 4px; }
-.sheet-nav { display: flex; align-items: center; justify-content: center; gap: 22px; margin: 10px 0 18px; }
-.sheet-label { font-size: 13px; color: var(--ink-dim); letter-spacing: 2px; }
+/* 卷首题字：标题写进纸里，第一列 */
+.sheet-cell.title-cell { display: inline-flex; align-items: center; justify-content: center; }
+.sheet-title-ch { font-size: 36px; color: #2b2118; line-height: 1; }
 .work-empty-hint { color: var(--ink-dim); text-align: center; font-size: 13px; padding: 6px 0 20px; }
 .ceremony-title-row { display: flex; align-items: center; justify-content: space-between; }
 #ceremony-fold { padding: 2px 8px; font-size: 12px; }
