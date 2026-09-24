@@ -1379,11 +1379,25 @@
     $('inkplay-overlay').classList.remove('hidden');
     if (!inkplayPad) inkplayPad = new WritingPad($('inkplay-paper'), $('inkplay-ink'), {});
     inkplayPad.setFont(state.font.stack);
+    // 舞台按书写时的宽高比定尺寸，不拉伸变形
+    var firstRec = (byPos[queue[0]] && byPos[queue[0]].strokes) || {};
+    var ar = firstRec.ar || (window.innerWidth / window.innerHeight) || 0.5;
+    var stage = $('inkplay-stage');
+    var maxW = Math.min(window.innerWidth * 0.94, 480);
+    var maxH = window.innerHeight * 0.62;
+    var sw = maxW, sh = sw / ar;
+    if (sh > maxH) { sh = maxH; sw = sh * ar; }
+    stage.style.width = Math.round(sw) + 'px';
+    stage.style.height = Math.round(sh) + 'px';
     inkplayActive = true;
-    // 配乐：写字时录下的音乐（若有）
+    // 配乐：写字时录下的音乐（若有）；currentTime 单独 try——元数据未就绪时它会抛异常，不能因此跳过 play()
     try {
       var au = $('workview-audio');
-      if (au && au.src) { au.currentTime = 0; var p = au.play(); if (p && p.catch) p.catch(function () {}); }
+      if (au && au.src) {
+        try { au.currentTime = 0; } catch (e0) {}
+        var p = au.play();
+        if (p && p.catch) p.catch(function () {});
+      }
     } catch (e) {}
     var idx = 0;
     var step = function () {

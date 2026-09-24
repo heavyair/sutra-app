@@ -298,7 +298,7 @@ button:active { transform: scale(0.97); }
 
 /* 落笔放映 */
 .inkplay-card { width: min(94vw, 480px); }
-.inkplay-stage { position: relative; width: 100%; aspect-ratio: 3/4; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--paper); }
+.inkplay-stage { position: relative; width: 100%; aspect-ratio: 3/4; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--paper); margin: 0 auto; }
 .inkplay-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .inkplay-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
 #inkplay-label { font-size: 14px; color: var(--ink-dim); }

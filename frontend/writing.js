@@ -475,10 +475,26 @@
     ctx.restore();
   };
 
-  // 取出当前字的落笔记录（最小存储单位）：{ pen, strokes: [[[x,y,t,w]...]] }
-  // x,y 为相对画布的 0~1 坐标；t 为相对本字首笔的毫秒；w 为相对画布短边的笔宽
+  // 取出当前字的落笔记录（最小存储单位）：{ pen, ar, strokes: [[[x,y,t,w]...]] }
+  // x,y 为相对画布的 0~1 坐标；t 为相对本字首笔的毫秒；w 为相对画布短边的笔宽；
+  // ar 为书写画布宽高比（重画时按原比例显示，不拉伸变形）
   WritingPad.prototype.getCharRecord = function () {
-    return { pen: this.pen, strokes: this._recStrokes || [] };
+    var s = this._sizeOf(this.ink);
+    return { pen: this.pen, ar: s.w / s.h, strokes: this._recStrokes || [] };
+  };
+
+  // 按原始宽高比 ar(=w/h) 把内容 contain 进 w×h，返回 {ox,oy,dw,dh}
+  WritingPad._fitRect = function (w, h, ar) {
+    if (!(ar > 0)) return { ox: 0, oy: 0, dw: w, dh: h };
+    var dw, dh;
+    if (ar > w / h) { dw = w; dh = w / ar; }
+    else { dh = h; dw = h * ar; }
+    return { ox: (w - dw) / 2, oy: (h - dh) / 2, dw: dw, dh: dh };
+  };
+
+  // 当前视口宽高比（旧记录无 ar 时的兜底：同一台手机上看即准确）
+  WritingPad._viewportAr = function () {
+    return (global.innerWidth && global.innerHeight) ? global.innerWidth / global.innerHeight : 0;
   };
 
   // 回放落笔记录：按原时间节奏重画（过长则加速，上限 maxMs）
@@ -491,7 +507,8 @@
     this._bristlePhase = Math.random() * Math.PI * 2;
     this._bristleDist = 0;
     var s = this._sizeOf(this.ink);
-    var unit = Math.min(s.w, s.h) || 1;
+    var fr = WritingPad._fitRect(s.w, s.h, (rec && rec.ar) || WritingPad._viewportAr());
+    var unit = Math.min(fr.dw, fr.dh) || 1;
     var segs = [];
     (rec.strokes || []).forEach(function (st) {
       for (var i = 1; i < st.length; i++) segs.push([st[i - 1], st[i]]);
@@ -511,8 +528,8 @@
       while (i < segs.length && (segs[i][1][2] - t0) <= el && guard++ < 5000) {
         var a = segs[i][0], b = segs[i][1];
         self._drawSegment(
-          { x: a[0] * s.w, y: a[1] * s.h },
-          { x: b[0] * s.w, y: b[1] * s.h },
+          { x: fr.ox + a[0] * fr.dw, y: fr.oy + a[1] * fr.dh },
+          { x: fr.ox + b[0] * fr.dw, y: fr.oy + b[1] * fr.dh },
           b[3] * unit
         );
         i++;
@@ -541,14 +558,16 @@
     var ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.lineCap = ctx.lineJoin = 'round';
+    var fr = WritingPad._fitRect(canvas.width, canvas.height,
+      (rec && rec.ar) || WritingPad._viewportAr());
     if (rec && rec.auto === 'punct') {
-      var px = Math.min(canvas.width, canvas.height) * 0.52 * 0.55;
+      var px = Math.min(fr.dw, fr.dh) * 0.52 * 0.55;
       ctx.save();
       ctx.fillStyle = '#2b2118';
       ctx.font = px + 'px "Kaiti SC","KaiTi","STKaiti",serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(ch || '', canvas.width / 2, canvas.height * 0.44);
+      ctx.fillText(ch || '', fr.ox + fr.dw / 2, fr.oy + fr.dh * 0.44);
       ctx.restore();
       return;
     }
@@ -557,13 +576,13 @@
     fake.pen = (rec && rec.pen) || 'maobi';
     fake._bristleDist = 0;
     fake._bristlePhase = Math.random() * Math.PI * 2;
-    var unit = Math.min(canvas.width, canvas.height) || 1;
+    var unit = Math.min(fr.dw, fr.dh) || 1;
     ((rec && rec.strokes) || []).forEach(function (st) {
       for (var i = 1; i < st.length; i++) {
         var a = st[i - 1], b = st[i];
         WritingPad.prototype._drawSegment.call(fake,
-          { x: a[0] * canvas.width, y: a[1] * canvas.height },
-          { x: b[0] * canvas.width, y: b[1] * canvas.height },
+          { x: fr.ox + a[0] * fr.dw, y: fr.oy + a[1] * fr.dh },
+          { x: fr.ox + b[0] * fr.dw, y: fr.oy + b[1] * fr.dh },
           (b[3] || 0.03) * unit);
       }
     });
