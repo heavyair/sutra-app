@@ -44,7 +44,6 @@
     workData: null,    // 作品查看器数据：{work, chars}
     pauses: [],        // 笔画间停顿时长（ms），用于学习书写节奏
     pendingTimer: 0,   // 完成判定的延迟计时器
-    punctTimer: 0,     // 标点自动跳过的展示计时器
     lastStrokeEnd: 0,  // 上一笔抬起的时间戳
   };
 
@@ -77,10 +76,9 @@
 
   function cancelPendingComplete() {
     if (state.pendingTimer) { clearTimeout(state.pendingTimer); state.pendingTimer = 0; }
-    if (state.punctTimer) { clearTimeout(state.punctTimer); state.punctTimer = 0; }
   }
 
-  // 中日韩及常用 ASCII 标点：只展示1秒自动跳过，不用手写
+  // 中日韩及常用 ASCII 标点：抄经时直接跳过，不用手写
   var PUNCT_RE = /[　-〿！-／：-＠［-｀｛-･\u2000-\u206F\u2E00-\u2E7F.,;:?!'"()\[\]{}…—–·•‹›«»\-/]/;
   function isPunct(ch) { return PUNCT_RE.test(ch); }
 
@@ -583,19 +581,15 @@
     var ch = state.chars[state.charIndex];
     // 确保 webfont 就绪后再画虚影字（带超时兜底，只执行一次）
     var called = false;
+    var token = state.flowToken;
     var done = function () {
       if (called) return;
       called = true;
       pad.newChar(ch);
       if (isPunct(ch)) {
-        // 标点：盖印展示1秒，自动跳过，不用手写
-        pad.stampChar(ch);
-        var token = state.flowToken;
-        state.punctTimer = setTimeout(function () {
-          state.punctTimer = 0;
-          if (token !== state.flowToken || state.completing) return;
-          punctAdvance();
-        }, 1000);
+        // 标点直接跳过：静默盖印收录，不展示，立即进下一字
+        if (token !== state.flowToken || state.completing) return;
+        punctAdvance();
       }
     };
     try {
@@ -608,10 +602,11 @@
     done();
   }
 
-  // 标点展示1秒后：收录盖印成品，直接进下一字
+  // 标点直接跳过：小字号静默盖印收录，不展示，立即进下一字
   function punctAdvance() {
     if (state.completing) return;
     cancelPendingComplete();
+    pad.stampChar(state.chars[state.charIndex]);
     var img = pad.snapshot();
     if (img) state.workImages.push(img);
     updateProgress();
@@ -665,7 +660,6 @@
   // 橡皮：一下清空重写（若在"缓缓隐藏"中点橡皮，视同继续改写）
   $('btn-eraser').addEventListener('click', function () {
     if (!pad) return;
-    var wasPunct = !!state.punctTimer; // 标点展示中被橡皮打断
     cancelPendingComplete();
     if (state.completing) {
       state.completing = false;
@@ -680,7 +674,6 @@
     pad.clearInk();
     $('btn-keep-editing').classList.add('hidden');
     $('btn-force-next').classList.add('hidden');
-    if (wasPunct) beginChar(); // 重新展示该标点
   });
 
   function updateProgress() {
@@ -928,6 +921,8 @@
         cell.className = 'wv-cell' + (saved ? ' done' : ' todo');
         cell.style.fontFamily = fontStack;
         cell.textContent = state.chars[pos];
+        // 标点按正常比例小字号显示，不占满整个字格
+        if (isPunct(state.chars[pos])) cell.style.fontSize = '13px';
         if (saved) {
           cell.title = '点击回放第 ' + (pos + 1) + ' 字';
           cell.addEventListener('click', function () { openReplay(pos); });

@@ -23,6 +23,9 @@
 (function (global) {
   'use strict';
 
+  // 中日韩及常用 ASCII 标点：盖印时用小字号，避免字形占满整个字格显得过大
+  var PUNCT_RE = /[　-〿！-／：-＠［-｀｛-･\u2000-\u206F\u2E00-\u2E7F.,;:?!"'()\[\]{}…—–·•‹›«»\-/]/;
+
   var GRID = 48;
 
   var PENS = {
@@ -457,12 +460,15 @@
   global.WritingPad = WritingPad;
 
   // 把当前字（自动跳过的标点）以墨色盖印到墨层，成品依然完整
+  // 标点用小字号盖印：字形按正常比例显示，不占满整个字格
   WritingPad.prototype.stampChar = function (ch) {
     var s = this._sizeOf(this.ink);
     var ctx = this.ictx;
+    var px = (this.charPx || Math.min(s.w, s.h) * 0.52);
+    if (PUNCT_RE.test(ch)) px *= 0.55;
     ctx.save();
     ctx.fillStyle = (PENS[this.pen] && PENS[this.pen].color) || '#2b2118';
-    ctx.font = (this.charPx || Math.min(s.w, s.h) * 0.52) + 'px ' + this.fontStack;
+    ctx.font = px + 'px ' + this.fontStack;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(ch, s.w / 2, s.h * 0.44);
