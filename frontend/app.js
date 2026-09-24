@@ -45,6 +45,7 @@
     paraEndFading: false, // 段末标点淡出中：等它淡完才算段落结束，期间忽略落笔/橡皮
     work: null,        // 当前作品（服务端）：{id, anon_key, ...}
     workData: null,    // 作品查看器数据：{work, chars}
+    audioBlobUrl: null, // 查看器音频 blob URL（带鉴权取回的录音）
     pauses: [],        // 笔画间停顿时长（ms），用于学习书写节奏
     pendingTimer: 0,   // 完成判定的延迟计时器
     lastStrokeEnd: 0,  // 上一笔抬起的时间戳
@@ -1225,9 +1226,23 @@
       (w.owner_type === 'anon' ? ' · 匿名公开，可续写' : '');
     // 音乐：写字时录下的
     var au = $('workview-audio');
+    if (state.audioBlobUrl) { try { URL.revokeObjectURL(state.audioBlobUrl); } catch (e) {} state.audioBlobUrl = null; }
     if (w.has_audio) {
       au.style.display = '';
-      au.src = '/api/works/' + w.id + '/audio' + (share ? '?share=' + encodeURIComponent(share) : '');
+      au.removeAttribute('src');
+      var audioUrl = '/api/works/' + w.id + '/audio' + (share ? '?share=' + encodeURIComponent(share) : '');
+      // <audio> 发不出 Authorization / X-Anon-Key，带鉴权取 blob 再播（登录用户私作直连会 404）
+      var ah = {};
+      var at = getToken(); if (at) ah['Authorization'] = 'Bearer ' + at;
+      var aak = getAnonKey(); if (aak) ah['X-Anon-Key'] = aak;
+      fetch(audioUrl, { headers: ah }).then(function (r) {
+        if (!r.ok) throw 0;
+        return r.blob();
+      }).then(function (blob) {
+        if (!blob || !blob.size) throw 0;
+        state.audioBlobUrl = URL.createObjectURL(blob);
+        au.src = state.audioBlobUrl;
+      }).catch(function () { /* 取不到录音：放映时用现场音乐兜底 */ });
     } else {
       au.style.display = 'none';
       au.removeAttribute('src');
@@ -1369,17 +1384,23 @@
   });
 
   /* ---------- 落笔放映：整部作品按原节奏依次重演 ---------- */
-  var inkplayPad = null, inkplayTimer = 0, inkplayActive = false;
+  var inkplayPad = null, inkplayTimer = 0, inkplayActive = false, inkplayLiveMusic = false;
+
+  function startInkplayLiveMusic() {
+    // 没有录音时：现场生成写字时的同一套音乐
+    try {
+      if (!state.musicOn) { music.start(); state.musicOn = true; inkplayLiveMusic = true; }
+      music.setAudible(true);
+    } catch (e) {}
+  }
 
   function openInkPlay() {
     var byPos = state.workCharsByPos || {};
     var queue = [];
     for (var i = 0; i < state.chars.length; i++) if (byPos[i]) queue.push(i);
     if (!queue.length) { alert('还没有写完的字'); return; }
-    $('inkplay-overlay').classList.remove('hidden');
-    if (!inkplayPad) inkplayPad = new WritingPad($('inkplay-paper'), $('inkplay-ink'), {});
-    inkplayPad.setFont(state.font.stack);
-    // 舞台按书写时的宽高比定尺寸，不拉伸变形
+    // 舞台按书写时的宽高比定尺寸——先定尺寸、显示，再建 pad 并 _resize，
+    // 否则 backing store 与 CSS 对不上会被拉伸变形
     var firstRec = (byPos[queue[0]] && byPos[queue[0]].strokes) || {};
     var ar = firstRec.ar || (window.innerWidth / window.innerHeight) || 0.5;
     var stage = $('inkplay-stage');
@@ -1389,16 +1410,23 @@
     if (sh > maxH) { sh = maxH; sw = sh * ar; }
     stage.style.width = Math.round(sw) + 'px';
     stage.style.height = Math.round(sh) + 'px';
+    $('inkplay-overlay').classList.remove('hidden');
+    if (!inkplayPad) inkplayPad = new WritingPad($('inkplay-paper'), $('inkplay-ink'), {});
+    else inkplayPad._resize();
+    inkplayPad.setFont(state.font.stack);
     inkplayActive = true;
-    // 配乐：写字时录下的音乐（若有）；currentTime 单独 try——元数据未就绪时它会抛异常，不能因此跳过 play()
+    // 声音：优先放写字时录下的音乐；没有录音则现场生成
     try {
       var au = $('workview-audio');
-      if (au && au.src) {
+      var w = state.workData && state.workData.work;
+      if (w && w.has_audio && au && au.src) {
         try { au.currentTime = 0; } catch (e0) {}
         var p = au.play();
-        if (p && p.catch) p.catch(function () {});
+        if (p && p.catch) p.catch(function () { startInkplayLiveMusic(); });
+      } else {
+        startInkplayLiveMusic();
       }
-    } catch (e) {}
+    } catch (e) { startInkplayLiveMusic(); }
     var idx = 0;
     var step = function () {
       if (!inkplayActive) return;
@@ -1430,6 +1458,12 @@
     clearTimeout(inkplayTimer);
     if (inkplayPad) inkplayPad.cancelReplay();
     try { var au = $('workview-audio'); if (au) au.pause(); } catch (e) {}
+    if (inkplayLiveMusic) {
+      // 现场音乐是我们开的，关掉并还原
+      inkplayLiveMusic = false;
+      try { music.setAudible(false); } catch (e) {}
+      try { if (state.musicOn) { music.stop(); state.musicOn = false; } } catch (e2) {}
+    }
     $('inkplay-overlay').classList.add('hidden');
   }
   $('btn-inkplay-close').addEventListener('click', closeInkPlay);
