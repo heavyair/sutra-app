@@ -189,9 +189,9 @@ def migrate_works():
             """UPDATE works SET farewell_mode = 'public'
                WHERE farewell_mode IS NULL AND farewell_at IS NOT NULL"""
         )
-    # 回向：dedicated_at / dedication_target / dedication_text / ash_cells（幂等补列）
+    # 回向：dedicated_at / dedication_target / dedication_text / dedication_kind / ash_cells（幂等补列）
     cols = [r[1] for r in conn.execute("PRAGMA table_info(works)").fetchall()]
-    for _col in ("dedicated_at", "dedication_target", "dedication_text", "ash_cells"):
+    for _col in ("dedicated_at", "dedication_target", "dedication_text", "dedication_kind", "ash_cells"):
         if _col not in cols:
             conn.execute(f"ALTER TABLE works ADD COLUMN {_col} TEXT")
     conn.execute(
@@ -708,6 +708,7 @@ def _work_json(w):
         "dedicated_at": w["dedicated_at"] if "dedicated_at" in keys else None,
         "dedication_target": w["dedication_target"] if "dedication_target" in keys else None,
         "dedication_text": w["dedication_text"] if "dedication_text" in keys else None,
+        "dedication_kind": w["dedication_kind"] if "dedication_kind" in keys else None,
         "ash_cells": _parse_ash(w["ash_cells"]) if "ash_cells" in keys else [],
     }
 
@@ -1011,9 +1012,25 @@ def work_share(wid):
     return jsonify({"ok": True, "share_token": token})
 
 
-DEDICATION_TEMPLATE = ("愿以此抄经功德，回向{target}。"
-                       "愿以此功德，庄严佛净土，上报四重恩，下济三途苦；"
-                       "若有见闻者，悉发菩提心，尽此一报身，同生极乐国。")
+DEDICATION_TEXTS = {
+    # 回向偈
+    "huixiangji": ("愿以此抄经功德，回向{target}。"
+                   "愿以此功德，庄严佛净土，上报四重恩，下济三途苦；"
+                   "若有见闻者，悉发菩提心，尽此一报身，同生极乐国。"),
+    # 普贤行愿品·回向
+    "puxian": ("愿以此抄经功德，回向{target}。"
+               "所有十方世界中，三世一切人师子，我以清净身语意，一切遍礼尽无余。"
+               "愿我临欲命终时，尽除一切诸障碍，面见彼佛阿弥陀，即得往生安乐刹。"),
+    # 平等回向
+    "pingdeng": ("愿以此抄经功德，回向{target}。"
+                 "愿以此功德，平等施一切，同发菩提心，往生安乐国。"),
+    # 消灾祈福
+    "xiaozai": ("愿以此抄经功德，回向{target}。"
+                "愿消三障诸烦恼，愿得智慧真明了，"
+                "普愿罪障悉消除，世世常行菩萨道。"),
+}
+DEDICATION_KINDS = {"huixiangji": "回向偈", "puxian": "普贤回向",
+                    "pingdeng": "平等回向", "xiaozai": "消灾祈福"}
 
 
 @app.route("/api/works/<int:wid>/dedicate", methods=["POST"])
@@ -1037,12 +1054,15 @@ def work_dedicate(wid):
         return jsonify({"ok": False, "message": "已经回向过了"}), 400
     data = request.get_json(silent=True) or {}
     target = (data.get("target") or "").strip()[:40] or "法界一切众生"
+    kind = data.get("kind")
+    if kind not in DEDICATION_TEXTS:
+        kind = "huixiangji"
     rows = conn.execute("SELECT pos FROM work_chars WHERE work_id = ?", (wid,)).fetchall()
     ash = sorted(set(r["pos"] for r in rows))
     if not ash:
         conn.close()
         return jsonify({"ok": False, "message": "还没有写字"}), 400
-    text = DEDICATION_TEMPLATE.format(target=target)
+    text = DEDICATION_TEXTS[kind].format(target=target)
     conn.execute("DELETE FROM work_chars WHERE work_id = ?", (wid,))
     if w["audio_path"]:
         try:
@@ -1051,14 +1071,14 @@ def work_dedicate(wid):
             pass
     conn.execute(
         """UPDATE works SET dedicated_at = datetime('now'), dedication_target = ?,
-               dedication_text = ?, ash_cells = ?, audio_path = NULL,
+               dedication_text = ?, dedication_kind = ?, ash_cells = ?, audio_path = NULL,
                farewell_at = NULL, farewell_mode = 'dedicated',
                updated_at = datetime('now') WHERE id = ?""",
-        (target, text, json.dumps(ash), wid),
+        (target, text, kind, json.dumps(ash), wid),
     )
     conn.commit()
     conn.close()
-    return jsonify({"ok": True, "dedication_text": text, "ash_cells": ash})
+    return jsonify({"ok": True, "dedication_text": text, "dedication_kind": kind, "ash_cells": ash})
 
 
 @app.route("/api/works/<int:wid>/audio", methods=["POST"])

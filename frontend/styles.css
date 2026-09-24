@@ -279,16 +279,9 @@ button:active { transform: scale(0.97); }
 }
 .wv-cell.done { border-color: var(--gold); }
 .wv-cell.todo { color: var(--ink-dim); opacity: 0.45; font-size: 18px; }
-/* 已回向：字迹化去，唯留尘埃 */
+/* 已回向：字迹化去，唯留尘埃（灰烬纹理每格随机生成，见 setAsh） */
 .wv-cell.ash {
-  border-color: #c9c2ae; background-color: #ddd6c2;
-  background-image:
-    radial-gradient(circle at 22% 28%, rgba(105,98,80,.55) 1.1px, transparent 1.7px),
-    radial-gradient(circle at 68% 18%, rgba(105,98,80,.4) 1px, transparent 1.5px),
-    radial-gradient(circle at 45% 55%, rgba(105,98,80,.5) 1.2px, transparent 1.8px),
-    radial-gradient(circle at 80% 70%, rgba(105,98,80,.42) 1px, transparent 1.5px),
-    radial-gradient(circle at 30% 82%, rgba(105,98,80,.48) 1.1px, transparent 1.6px),
-    radial-gradient(circle at 58% 38%, rgba(120,112,92,.35) 1px, transparent 1.5px);
+  border-color: #c9c2ae;
   box-shadow: inset 0 0 8px rgba(120,110,85,.25);
 }
 .wv-cell.gone { border-color: var(--line); background: var(--card); opacity: .5; }
@@ -338,3 +331,16 @@ button:active { transform: scale(0.97); }
 .ceremony-text .ch-read { color: #ffd978; text-shadow: 0 0 8px rgba(255, 217, 120, .6); }
 .ceremony-status { margin-top: 8px; font-size: 13px; color: #a89468; letter-spacing: 2px; }
 .ceremony-done-mark { color: #ffd978; font-size: 20px; letter-spacing: 4px; text-align: center; margin-top: 6px; }
+/* 回向进度条 */
+.ceremony-progress {
+  height: 3px; background: rgba(232,179,75,.18); border-radius: 2px;
+  margin: 10px 2px 2px; overflow: hidden;
+}
+.ceremony-progress i {
+  display: block; height: 100%; width: 0%;
+  background: linear-gradient(90deg, #b8862f, #f4d47c);
+  border-radius: 2px; transition: width .15s linear;
+}
+/* 回向文种类选择 */
+.dedicate-kinds { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 4px; }
+.dedicate-kinds .chip.active { background: #8a6d2f; color: #fff; border-color: #8a6d2f; }

@@ -1254,8 +1254,9 @@
       (function (pos) {
         var cell = document.createElement('div');
         if (dedicated) {
-          // 纪念态：写过的格子留尘埃，其余空
-          cell.className = ashSet[pos] ? 'wv-cell ash' : 'wv-cell gone';
+          // 纪念态：写过的格子留尘埃（每格随机灰烬纹理），其余空
+          cell.className = 'wv-cell gone';
+          if (ashSet[pos]) setAsh(cell);
           grid.appendChild(cell);
           return;
         }
@@ -1370,9 +1371,24 @@
   });
 
   /* ---------- 回向 ---------- */
-  function dedicationTextFor(target) {
-    // 与服务端 DEDICATION_TEMPLATE 保持一致
-    return '愿以此抄经功德，回向' + target + '。愿以此功德，庄严佛净土，上报四重恩，下济三途苦；若有见闻者，悉发菩提心，尽此一报身，同生极乐国。';
+  // 与服务端 DEDICATION_TEXTS 保持一致（{target} 为回向对象占位）
+  var DEDICATION_TEXTS = {
+    huixiangji: '愿以此抄经功德，回向{target}。愿以此功德，庄严佛净土，上报四重恩，下济三途苦；若有见闻者，悉发菩提心，尽此一报身，同生极乐国。',
+    puxian: '愿以此抄经功德，回向{target}。所有十方世界中，三世一切人师子，我以清净身语意，一切遍礼尽无余。愿我临欲命终时，尽除一切诸障碍，面见彼佛阿弥陀，即得往生安乐刹。',
+    pingdeng: '愿以此抄经功德，回向{target}。愿以此功德，平等施一切，同发菩提心，往生安乐国。',
+    xiaozai: '愿以此抄经功德，回向{target}。愿消三障诸烦恼，愿得智慧真明了，普愿罪障悉消除，世世常行菩萨道。'
+  };
+  var DEDICATION_KINDS = ['huixiangji', 'puxian', 'pingdeng', 'xiaozai'];
+  function dedicationKind() {
+    try {
+      var k = localStorage.getItem('sutra_dedicate_kind');
+      if (DEDICATION_TEXTS[k]) return k;
+    } catch (e) {}
+    return 'huixiangji';
+  }
+  function dedicationTextFor(kind, target) {
+    var t = DEDICATION_TEXTS[kind] || DEDICATION_TEXTS.huixiangji;
+    return t.split('{target}').join(target);
   }
   function defaultDedicateTarget() {
     try { return localStorage.getItem('sutra_dedicate_target') || '法界一切众生'; }
@@ -1380,13 +1396,30 @@
   }
   function updateDedicatePreview() {
     var t = ($('dedicate-target').value || '').trim() || '法界一切众生';
-    $('dedicate-preview').textContent = dedicationTextFor(t);
+    $('dedicate-preview').textContent = dedicationTextFor(dedicationKind(), t);
+  }
+  function paintDedicateKinds() {
+    var cur = dedicationKind();
+    var box = $('dedicate-kinds');
+    var btns = box.querySelectorAll('.chip');
+    for (var i = 0; i < btns.length; i++) {
+      if (btns[i].getAttribute('data-kind') === cur) btns[i].classList.add('active');
+      else btns[i].classList.remove('active');
+    }
   }
 
   $('btn-workview-dedicate').addEventListener('click', function () {
     $('dedicate-target').value = defaultDedicateTarget();
+    paintDedicateKinds();
     updateDedicatePreview();
     $('dedicate-overlay').classList.remove('hidden');
+  });
+  $('dedicate-kinds').addEventListener('click', function (e) {
+    var b = e.target && e.target.getAttribute ? e.target.getAttribute('data-kind') : null;
+    if (!b || !DEDICATION_TEXTS[b]) return;
+    try { localStorage.setItem('sutra_dedicate_kind', b); } catch (err) {}
+    paintDedicateKinds();
+    updateDedicatePreview();
   });
   $('dedicate-target').addEventListener('input', updateDedicatePreview);
   $('btn-dedicate-cancel').addEventListener('click', function () {
@@ -1396,10 +1429,11 @@
     var w = state.workData && state.workData.work;
     if (!w) return;
     var target = ($('dedicate-target').value || '').trim() || '法界一切众生';
+    var kind = dedicationKind();
     try { localStorage.setItem('sutra_dedicate_target', target); } catch (e) {}
     if (!confirm('回向后字迹化烟，唯留尘埃与回向文，不可再欣赏、续写。确定回向吗？')) return;
     $('btn-dedicate-confirm').disabled = true;
-    api('/api/works/' + w.id + '/dedicate', { method: 'POST', body: JSON.stringify({ target: target }) })
+    api('/api/works/' + w.id + '/dedicate', { method: 'POST', body: JSON.stringify({ target: target, kind: kind }) })
       .then(function (res) {
         $('btn-dedicate-confirm').disabled = false;
         if (!res || !res.ok) { alert(res && res.message || '回向失败'); return; }
@@ -1409,37 +1443,91 @@
       .catch(function () { $('btn-dedicate-confirm').disabled = false; alert('网络异常'); });
   });
 
-  /* 庄严读出回向文：有中文嗓音则朗读，否则静默（只高亮） */
-  function speakDedication(text, cb) {
-    var called = false;
-    function done() { if (!called) { called = true; cb(); } }
+  /* 庄严读出回向文：有中文嗓音则朗读（onBoundary 给出朗读到的字符位置），
+     否则走 onSilent（静默，只高亮+燃烧，进度由计时器驱动） */
+  function speakDedication(text, onBoundary, onEnd, onSilent) {
+    var ended = false, silenced = false;
+    function end() { if (!ended) { ended = true; onEnd(); } }
+    function silent() { if (!silenced) { silenced = true; onSilent(); } }
     try {
       var synth = window.speechSynthesis;
-      if (!synth) { done(); return; }
+      if (!synth) { silent(); return; }
       synth.cancel();
       var vs = [];
       try { vs = synth.getVoices() || []; } catch (e) {}
       var zh = null, i;
       for (i = 0; i < vs.length; i++) if (/^zh([-_]CN)?$/i.test(vs[i].lang || '')) { zh = vs[i]; break; }
       if (!zh) for (i = 0; i < vs.length; i++) if (/^zh/i.test(vs[i].lang || '')) { zh = vs[i]; break; }
-      if (!zh) { done(); return; }
+      if (!zh) { silent(); return; }
       var u = new SpeechSynthesisUtterance(text);
       u.voice = zh; u.lang = zh.lang || 'zh-CN';
       u.rate = 0.82; u.pitch = 0.9;
-      u.onend = done; u.onerror = done;
+      try {
+        u.onboundary = function (e) {
+          if (e && typeof e.charIndex === 'number') onBoundary(e.charIndex);
+        };
+      } catch (e) {}
+      u.onend = end; u.onerror = end;
       synth.speak(u);
-      setTimeout(done, text.length * 600 + 15000); // 兜底
-    } catch (e) { done(); }
+      setTimeout(end, text.length * 600 + 15000); // 兜底
+    } catch (e) { silent(); }
   }
 
-  /* 单字化烟：墨点化作上升的烟，落下尘埃 */
-  function smokeCell(cell, dur, done) {
+  /* 纸灰：随机生成灰烬纹理（预生成 12 种，每格随机取用，看着像烧过的抄经纸） */
+  var ASH_VARIANTS = [];
+  function makeAshTexture() {
+    var S = 56;
+    var cv = document.createElement('canvas');
+    cv.width = cv.height = S;
+    var c = cv.getContext('2d');
+    var base = 198 + ((Math.random() * 28) | 0);
+    c.fillStyle = 'rgb(' + base + ',' + (base - 5) + ',' + (base - 16) + ')';
+    c.fillRect(0, 0, S, S);
+    var i, r, g;
+    for (i = 0; i < 22; i++) { // 深浅不一的灰斑
+      r = 2 + Math.random() * 7;
+      g = 150 + ((Math.random() * 70) | 0);
+      c.fillStyle = 'rgba(' + g + ',' + (g - 4) + ',' + (g - 12) + ',' + (0.25 + Math.random() * 0.4).toFixed(2) + ')';
+      c.beginPath(); c.arc(Math.random() * S, Math.random() * S, r, 0, 6.29); c.fill();
+    }
+    for (i = 0; i < 80; i++) { // 尘埃颗粒
+      g = 90 + ((Math.random() * 100) | 0);
+      c.fillStyle = 'rgba(' + g + ',' + (g - 6) + ',' + (g - 14) + ',' + (0.5 + Math.random() * 0.5).toFixed(2) + ')';
+      var s = Math.random() < 0.85 ? 1 : 2;
+      c.fillRect(Math.random() * S, Math.random() * S, s, s);
+    }
+    if (Math.random() < 0.35) { // 偶尔一点未燃尽的纸角
+      c.fillStyle = 'rgba(74,62,48,0.55)';
+      var cx = Math.random() * S, cy = Math.random() * S;
+      c.beginPath(); c.moveTo(cx, cy);
+      c.lineTo(cx + 7 + Math.random() * 9, cy + 2);
+      c.lineTo(cx + 3, cy + 7 + Math.random() * 8);
+      c.closePath(); c.fill();
+    }
+    if (Math.random() < 0.25) { // 偶尔一丝余烬暗红
+      c.fillStyle = 'rgba(150,60,30,0.35)';
+      c.beginPath(); c.arc(Math.random() * S, Math.random() * S, 1.5, 0, 6.29); c.fill();
+    }
+    return cv.toDataURL();
+  }
+  function randomAsh() {
+    while (ASH_VARIANTS.length < 12) ASH_VARIANTS.push(makeAshTexture());
+    return ASH_VARIANTS[(Math.random() * ASH_VARIANTS.length) | 0];
+  }
+  function setAsh(cell) {
+    cell.className = 'wv-cell ash';
+    cell.style.backgroundImage = 'url(' + randomAsh() + ')';
+    cell.style.backgroundSize = 'cover';
+  }
+
+  /* 一格纸燃烧：边缘先起火光，墨迹化作火星与烟上升，燃尽后随机落下纸灰 */
+  function burnCell(cell, dur, done) {
     var finished = false;
     function fin() { if (!finished) { finished = true; done(); } }
-    function toAsh() { cell.className = 'wv-cell ash'; }
+    function cleanup() { try { document.body.removeChild(ov); } catch (e) {} }
     var src = cell.querySelector('canvas');
     var r = cell.getBoundingClientRect();
-    if (!src || !r.width) { toAsh(); fin(); return; }
+    if (!src || !r.width) { setAsh(cell); fin(); return; }
     var dpr = Math.min(2, window.devicePixelRatio || 1);
     var W = Math.max(2, Math.round(r.width)), H = Math.max(2, Math.round(r.height));
     var ov = document.createElement('canvas');
@@ -1453,60 +1541,92 @@
     off.width = W; off.height = H;
     var octx = off.getContext('2d');
     try { octx.drawImage(src, 0, 0, W, H); } catch (e) {}
-    var parts = [];
+    var embers = [], smokes = [];
     try {
       var img = octx.getImageData(0, 0, W, H).data;
-      for (var y = 0; y < H; y += 3) {
-        for (var x = 0; x < W; x += 3) {
+      var y, x;
+      for (y = 0; y < H; y += 3) {
+        for (x = 0; x < W; x += 3) {
           if (img[(y * W + x) * 4 + 3] > 40) {
-            parts.push({ x: x, y: y, vx: (Math.random() - 0.5) * 0.6, vy: -(0.5 + Math.random() * 1.1),
-              life: 1, decay: 0.008 + Math.random() * 0.012, sz: 1 + Math.random() * 2.2,
-              ph: Math.random() * 6.28, tone: 60 + Math.random() * 40 });
+            if (Math.random() < 0.55) {
+              embers.push({ x: x, y: y, vx: (Math.random() - 0.5) * 0.9, vy: -(0.8 + Math.random() * 1.6),
+                life: 1, decay: 0.012 + Math.random() * 0.02, sz: 0.8 + Math.random() * 1.8,
+                hue: 18 + Math.random() * 28, ph: Math.random() * 6.28 });
+            } else {
+              smokes.push({ x: x, y: y, vx: (Math.random() - 0.5) * 0.4, vy: -(0.3 + Math.random() * 0.7),
+                life: 1, decay: 0.006 + Math.random() * 0.008, sz: 1.5 + Math.random() * 2.5,
+                ph: Math.random() * 6.28, tone: 70 + Math.random() * 50 });
+            }
           }
         }
       }
     } catch (e) {}
-    if (parts.length > 900) {
-      var keep = [];
-      for (var k = 0; k < 900; k++) keep.push(parts[(Math.random() * parts.length) | 0]);
-      parts = keep;
+    function trim(arr, max) {
+      if (arr.length <= max) return arr;
+      var out = [], i;
+      for (i = 0; i < max; i++) out.push(arr[(Math.random() * arr.length) | 0]);
+      return out;
     }
-    src.style.transition = 'opacity ' + Math.round(dur * 0.55) + 'ms';
+    embers = trim(embers, 420); smokes = trim(smokes, 420);
+    src.style.transition = 'opacity ' + Math.round(dur * 0.5) + 'ms';
     src.style.opacity = '0';
     var start = performance.now();
     (function frame(now) {
       var t = (now - start) / dur;
       ctx.clearRect(0, 0, W, H);
-      var alive = false, i, p;
-      for (i = 0; i < parts.length; i++) {
-        p = parts[i];
+      var i, p;
+      if (t < 0.45) { // 火光边缘闪烁
+        var fl = 0.5 + 0.5 * Math.sin(now / 47) * Math.sin(now / 31 + 1.7);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,' + (120 + ((fl * 80) | 0)) + ',30,' + (0.55 + fl * 0.4).toFixed(2) + ')';
+        ctx.lineWidth = 2 + fl * 2;
+        ctx.shadowColor = 'rgba(255,140,40,0.9)';
+        ctx.shadowBlur = 10 + fl * 12;
+        ctx.strokeRect(1.5, 1.5, W - 3, H - 3);
+        ctx.restore();
+      }
+      var alive = false;
+      for (i = 0; i < embers.length; i++) { // 火星：橙黄，闪烁上升
+        p = embers[i];
         if (p.life <= 0) continue;
         alive = true;
-        p.x += p.vx + Math.sin(now / 300 + p.ph) * 0.4;
+        p.x += p.vx + Math.sin(now / 260 + p.ph) * 0.5;
         p.y += p.vy;
-        p.vx *= 0.995; p.vy *= 0.995;
+        p.vy *= 0.99;
         p.life -= p.decay;
-        var al = Math.max(0, Math.min(1, p.life)) * 0.75;
-        var g = Math.round(Math.min(235, p.tone + (1 - p.life) * 120));
-        ctx.fillStyle = 'rgba(' + g + ',' + g + ',' + (g - 8) + ',' + al.toFixed(3) + ')';
+        var tw = 0.6 + 0.4 * Math.sin(now / 60 + p.ph * 3);
+        var al = Math.max(0, Math.min(1, p.life)) * tw;
+        ctx.fillStyle = 'hsla(' + p.hue.toFixed(0) + ',100%,' + (48 + p.life * 12).toFixed(0) + '%,' + al.toFixed(3) + ')';
         ctx.beginPath();
-        ctx.arc(p.x, p.y, Math.max(0.4, p.sz * (1.6 - p.life * 0.6)), 0, 6.29);
+        ctx.arc(p.x, p.y, Math.max(0.4, p.sz * p.life), 0, 6.29);
+        ctx.fill();
+      }
+      for (i = 0; i < smokes.length; i++) { // 烟：灰色，缓慢上升扩大
+        p = smokes[i];
+        if (p.life <= 0) continue;
+        alive = true;
+        p.x += p.vx + Math.sin(now / 400 + p.ph) * 0.4;
+        p.y += p.vy;
+        p.life -= p.decay;
+        var g = Math.round(Math.min(235, p.tone + (1 - p.life) * 110));
+        var sal = Math.max(0, Math.min(1, p.life)) * 0.6;
+        ctx.fillStyle = 'rgba(' + g + ',' + g + ',' + (g - 8) + ',' + sal.toFixed(3) + ')';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, Math.max(0.5, p.sz * (1.7 - p.life * 0.7)), 0, 6.29);
         ctx.fill();
       }
       if (t < 1 && alive) requestAnimationFrame(frame);
-      else {
-        try { document.body.removeChild(ov); } catch (e) {}
-        toAsh(); fin();
-      }
+      else { cleanup(); setAsh(cell); fin(); }
     })(start);
-    setTimeout(fin, dur + 1500); // 兜底
+    setTimeout(function () { cleanup(); setAsh(cell); fin(); }, dur + 1500); // 兜底
   }
 
-  /* 回向仪式：读文的同时，字迹逐字化烟 */
+  /* 回向仪式：朗读进度驱动回向文高亮、进度条与纸燃烧（三者严格同步） */
   function playDedicationCeremony(text, ashCells) {
     var overlay = $('ceremony-overlay');
     var txtEl = $('ceremony-text');
     var statusEl = $('ceremony-status');
+    var barEl = $('ceremony-progress-i');
     txtEl.innerHTML = '';
     var spans = [];
     text.split('').forEach(function (ch) {
@@ -1515,20 +1635,35 @@
       txtEl.appendChild(s); spans.push(s);
     });
     statusEl.textContent = '字迹化烟中……';
+    barEl.style.width = '0%';
     overlay.classList.remove('hidden');
     try { $('workview-grid').scrollIntoView({ block: 'start' }); } catch (e) {}
     var n = ashCells.length;
-    var estTotal = Math.max(6000, text.length * 340); // 估计读文时长
-    var perCell = Math.min(1400, Math.max(280, estTotal / Math.max(1, n)));
-    var ttsDone = false, animDone = false, finDone = false, highlighted = 0;
-    var hlTimer = setInterval(function () {
-      if (highlighted < spans.length) { spans[highlighted].className = 'ch-read'; highlighted++; }
-    }, Math.max(60, estTotal / Math.max(1, spans.length)));
-    function finish() {
-      if (!(ttsDone && animDone) || finDone) return;
+    var grid = $('workview-grid');
+    var readPos = 0;             // 朗读到的字符位置（进度之源）
+    var boundarySeen = false;    // TTS 是否给出 boundary 事件
+    var silent = false;          // 无中文嗓音：静默仪式
+    var ttsEnded = false, ttsDone = false, finDone = false;
+    var highlighted = 0, ignited = 0, burned = 0;
+    function paintProgress() {
+      var prog = Math.min(1, readPos / text.length);
+      barEl.style.width = (prog * 100).toFixed(1) + '%';
+      var h = Math.min(spans.length, Math.floor(prog * spans.length));
+      while (highlighted < h) { spans[highlighted].className = 'ch-read'; highlighted++; }
+      var b = Math.min(n, Math.floor(prog * n));
+      while (ignited < b) { igniteCell(ignited); ignited++; }
+    }
+    function igniteCell(i) {
+      var cell = grid.children[ashCells[i]];
+      if (!cell) { burned++; checkFinish(); return; }
+      burnCell(cell, 750 + Math.random() * 550, function () { burned++; checkFinish(); });
+    }
+    function checkFinish() {
+      if (finDone || !ttsDone || burned < n) return;
       finDone = true;
-      clearInterval(hlTimer);
+      clearInterval(tick);
       spans.forEach(function (s) { s.className = 'ch-read'; });
+      barEl.style.width = '100%';
       statusEl.innerHTML = '<div class="ceremony-done-mark">尘归尘 · 功德圆满 🪷</div>';
       setTimeout(function () {
         overlay.classList.add('hidden');
@@ -1546,16 +1681,26 @@
         try { window.scrollTo(0, 0); } catch (e) {}
       }, 3200);
     }
-    speakDedication(text, function () { ttsDone = true; finish(); });
-    var grid = $('workview-grid');
-    var idx = 0;
-    (function next() {
-      if (idx >= n) { animDone = true; finish(); return; }
-      var cell = grid.children[ashCells[idx]];
-      idx++;
-      if (!cell) { next(); return; }
-      smokeCell(cell, perCell, next);
-    })();
+    speakDedication(text,
+      function (ci) { boundarySeen = true; readPos = ci; paintProgress(); },
+      function () { ttsEnded = true; },
+      function () { silent = true; });
+    // 无 boundary 事件时按估计时长推算进度（有声 TTS 封顶 95%，等 onend 补齐）
+    var estTotal = Math.max(8000, text.length * 380);
+    var t0 = performance.now();
+    var tick = setInterval(function () {
+      if (finDone) { clearInterval(tick); return; }
+      if (!boundarySeen && !ttsEnded) {
+        var cap = silent ? text.length : Math.floor(text.length * 0.95);
+        readPos = Math.min(cap, (performance.now() - t0) / estTotal * text.length);
+      }
+      if (ttsEnded) readPos = text.length;
+      if (!ttsDone && (ttsEnded || (silent && readPos >= text.length))) {
+        ttsDone = true; readPos = text.length;
+      }
+      paintProgress();
+      checkFinish();
+    }, 120);
   }
 
   /* ---------- 回放：重演一字的落笔过程 ---------- */

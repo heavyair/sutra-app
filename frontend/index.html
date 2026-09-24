@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1a1611">
 <title>抄经 · 静心</title>
-<link rel="stylesheet" href="styles.css?v=25">
+<link rel="stylesheet" href="styles.css?v=26">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@600&display=swap">
 </head>
@@ -243,6 +243,12 @@
     <label class="dedicate-label2" for="dedicate-target">回向对象</label>
     <input id="dedicate-target" class="text-input" maxlength="40" placeholder="法界一切众生">
     <div class="dedicate-label2">回向文</div>
+    <div id="dedicate-kinds" class="dedicate-kinds">
+      <button data-kind="huixiangji" class="chip">回向偈</button>
+      <button data-kind="puxian" class="chip">普贤回向</button>
+      <button data-kind="pingdeng" class="chip">平等回向</button>
+      <button data-kind="xiaozai" class="chip">消灾祈福</button>
+    </div>
     <p id="dedicate-preview" class="dedicate-preview"></p>
     <div class="inkplay-bar">
       <button id="btn-dedicate-confirm" class="btn-primary">开始回向</button>
@@ -257,6 +263,7 @@
   <div class="ceremony-banner">
     <div class="dedication-label">🪷 回向文</div>
     <div id="ceremony-text" class="ceremony-text"></div>
+    <div class="ceremony-progress"><i id="ceremony-progress-i"></i></div>
     <div id="ceremony-status" class="ceremony-status">字迹化烟中……</div>
   </div>
 </div>
@@ -264,8 +271,8 @@
 <!-- 打印专用：屏幕上隐藏，打印时显示 -->
 <div id="print-sheet"></div>
 
-<script src="music.js?v=25"></script>
-<script src="writing.js?v=25"></script>
-<script src="app.js?v=25"></script>
+<script src="music.js?v=26"></script>
+<script src="writing.js?v=26"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>
