@@ -8,6 +8,8 @@
  *     L1 五声音阶随机游走的拨弦音（p > 0.15）
  *     L2 和声铺底 pad（p > 0.45）
  *     L3 高音泛音点缀（p > 0.75）
+ * - L4 gamma 脑波层：40Hz 纯正弦，极低音量，全程铺底（一直开）
+ *   可按经文配置 music_config.gamma = {hz, vol, off}，缺省 40Hz / 0.03 / 开
  */
 (function (global) {
   'use strict';
@@ -22,7 +24,7 @@
   function MusicEngine() {
     this.ctx = null;
     this.master = null;
-    this.layers = {};      // L0..L3 的 gain 节点
+    this.layers = {};      // L0..L4 的 gain 节点
     this.timers = [];
     this.config = { root_midi: 57, tempo_bpm: 50, timbre: 'soft_sine', mood: '' };
     this.playing = false;
@@ -43,7 +45,7 @@
     this.master = this.ctx.createGain();
     this.master.gain.value = this.muted ? 0 : 0.6;
     this.master.connect(this.ctx.destination);
-    for (var i = 0; i < 4; i++) {
+    for (var i = 0; i < 5; i++) {
       var g = this.ctx.createGain();
       g.gain.value = 0;
       g.connect(this.master);
@@ -140,6 +142,26 @@
     tick();
   };
 
+  // L4：gamma 脑波层（40Hz 纯正弦，极低音量，全程铺底）
+  MusicEngine.prototype._startGamma = function () {
+    var ctx = this.ctx;
+    var cfg = this.config.gamma || {};
+    if (cfg.off) return;
+    var freq = cfg.hz || 40;
+    var vol = (cfg.vol !== undefined && cfg.vol !== null) ? cfg.vol : 0.03;
+    if (!(vol > 0)) return;
+    var osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    var g = ctx.createGain();
+    g.gain.value = vol;
+    osc.connect(g);
+    g.connect(this.layers.L4);
+    osc.start();
+    // 缓慢浮现，不打扰入静
+    this.layers.L4.gain.setTargetAtTime(1, ctx.currentTime, 4);
+  };
+
   MusicEngine.prototype.start = function () {
     if (this.playing) return;
     this._ensureCtx();
@@ -147,6 +169,7 @@
     this.playing = true;
     this.noteIndex = 0;
     this._startDrone();
+    this._startGamma();
     this._startMelody();
     this._startPad();
     this._startSparkle();
@@ -183,7 +206,8 @@
       1,                                    // L0 drone：一直开
       this._progress > 0.15 ? 1 : 0,        // L1 旋律
       this._progress > 0.45 ? 1 : 0,        // L2 和声
-      this._progress > 0.75 ? 1 : 0         // L3 泛音
+      this._progress > 0.75 ? 1 : 0,        // L3 泛音
+      1                                     // L4 gamma：一直开
     ];
     var self = this;
     gates.forEach(function (on, i) {
