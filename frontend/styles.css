@@ -306,11 +306,45 @@ button:active { transform: scale(0.97); }
   background: #f7f1e3; border: 1px solid #e0d0a8; border-radius: 8px; padding: 10px 12px; margin: 4px 0 0; }
 
 /* 回向仪式：横幅轻薄可收起，不遮挡纸燃烧 */
-#ceremony-overlay { position: fixed; inset: 0; z-index: 80; }
+#ceremony-overlay { position: fixed; inset: 0; z-index: 80; display: flex; flex-direction: column; }
+#ceremony-overlay.hidden { display: none !important; }
 .ceremony-veil { position: absolute; inset: 0; background: rgba(20, 16, 10, 0.28); }
-.ceremony-banner { position: absolute; top: 0; left: 0; right: 0; padding: 10px 16px 8px;
+.ceremony-banner { position: relative; z-index: 2; padding: 10px 16px 8px;
   background: linear-gradient(to bottom, rgba(24,19,12,.94), rgba(24,19,12,.82));
-  border-bottom: 1px solid #8a6d2f; max-height: 32vh; overflow-y: auto; }
+  border-bottom: 1px solid #8a6d2f; max-height: 32vh; overflow-y: auto; flex: none; }
+#ceremony-stage { position: relative; z-index: 1; flex: 1; overflow-y: auto; padding-bottom: 28px; }
+
+/* 双视图：逐字 | 整纸 */
+.view-toggle { display: flex; gap: 10px; justify-content: center; margin: 12px 0 6px; }
+.vt-btn { padding: 6px 26px; border-radius: 20px; border: 1px solid var(--line);
+  background: transparent; color: var(--ink-dim); font-size: 14px; letter-spacing: 4px; }
+.vt-btn.active { background: var(--gold); border-color: var(--gold); color: #1a1408; font-weight: 700; }
+
+/* 逐字：一张大纸卡，滑动/‹›逐字翻看 */
+.char-pager { overflow: hidden; }
+.pager-track { display: flex; transition: transform .35s ease; }
+.pager-cell { flex: 0 0 100%; display: flex; justify-content: center; padding: 8px 0 2px; }
+.pager-card { width: min(78vw, 340px); }
+.pager-nav { display: flex; align-items: center; justify-content: center; gap: 22px; margin: 10px 0 4px; }
+.pager-btn { font-size: 26px; padding: 2px 14px; }
+.pager-label { font-size: 13px; color: var(--ink-dim); letter-spacing: 1px; min-width: 110px; text-align: center; }
+
+/* 整纸：宣纸竖排，一张纸 CAP 字 */
+.paper-sheet {
+  writing-mode: vertical-rl;
+  height: 560px; overflow-x: auto; overflow-y: hidden;
+  background: linear-gradient(135deg, #f7f1e0 0%, #f1e7cd 60%, #e9dcc0 100%);
+  border: 1px solid #d8c69a; border-radius: 6px;
+  box-shadow: 0 4px 18px rgba(0,0,0,.45), inset 0 0 40px rgba(150,120,70,.18);
+  padding: 24px 20px; margin: 10px 14px 4px;
+}
+.sheet-cell { display: inline-block; width: 34px; height: 34px; margin: 3px 4px; vertical-align: top; }
+.sheet-cell img { width: 100%; height: 100%; display: block; }
+.sheet-cell.blank { background: transparent; }
+.sheet-cell.burned { box-shadow: inset 0 0 10px rgba(110,100,75,.4); border-radius: 4px; }
+.sheet-nav { display: flex; align-items: center; justify-content: center; gap: 22px; margin: 10px 0 18px; }
+.sheet-label { font-size: 13px; color: var(--ink-dim); letter-spacing: 2px; }
+.work-empty-hint { color: var(--ink-dim); text-align: center; font-size: 13px; padding: 6px 0 20px; }
 .ceremony-title-row { display: flex; align-items: center; justify-content: space-between; }
 #ceremony-fold { padding: 2px 8px; font-size: 12px; }
 .ceremony-banner.collapsed #ceremony-text { display: none; }

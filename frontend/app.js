@@ -1079,46 +1079,191 @@
     showScreen('screen-library');
   });
 
+  /* ---------- 9.5 双视图：逐字 / 整纸 ---------- */
+  // 字位格：{pos, ch, saved(落笔记录|null), ash(是否纸灰)}
+  var SHEET_CAP = 180; // 每张纸最多 180 字（竖排约 12 列）
+  function mkEl(tag, cls) { var e = document.createElement(tag); if (cls) e.className = cls; return e; }
+  function inkImg(saved, ch, px) {
+    var cv = document.createElement('canvas');
+    cv.width = cv.height = px || 240;
+    WritingPad.drawStatic(cv, (saved && saved.strokes) || {}, ch);
+    var img = document.createElement('img');
+    img.src = cv.toDataURL('image/png');
+    img.alt = ch;
+    return img;
+  }
+  function ashImg() { var img = document.createElement('img'); img.src = randomAsh(); return img; }
+
+  // 已写字按全文序号收集（欣赏/查看器共用）
+  function collectWorkCells() {
+    var byPos = state.workCharsByPos || {};
+    var full = state.fullChars || state.chars || [];
+    var total = state.totalChars || full.length;
+    var cells = [];
+    for (var pos = 0; pos < total; pos++) {
+      var s = byPos[pos];
+      if (s) cells.push({ pos: pos, ch: s.ch || full[pos], saved: s });
+    }
+    return { cells: cells, total: total };
+  }
+
+  // 双视图组件：mount 内含 逐字|整纸 切换；ctx: {onTap(pos), isBurned(pos)}
+  function createDualView(mount, ctx) {
+    mount.innerHTML = '';
+    var wrap = mkEl('div', 'dual-view');
+    var toggle = mkEl('div', 'view-toggle');
+    var bChar = mkEl('button', 'vt-btn active'); bChar.textContent = '逐字';
+    var bSheet = mkEl('button', 'vt-btn'); bSheet.textContent = '整纸';
+    toggle.appendChild(bChar); toggle.appendChild(bSheet);
+    var charBox = mkEl('div', 'dual-char');
+    var sheetBox = mkEl('div', 'dual-sheet hidden');
+    wrap.appendChild(toggle); wrap.appendChild(charBox); wrap.appendChild(sheetBox);
+    mount.appendChild(wrap);
+    var api = {
+      view: 'char', cells: [], total: 0, cardByPos: {},
+      pagerIdx: 0, sheetIdx: 0,
+      render: function (cells, total) {
+        api.cells = cells || []; api.total = total || 0;
+        api.pagerIdx = 0; api.sheetIdx = 0;
+        renderActive();
+      },
+      switch: function (v) { setView(v); },
+      goTo: function (i) { if (api._go) api._go(i); },
+      drawSheetPage: function (i) { if (api._drawPage) api._drawPage(i); }
+    };
+    function setView(v) {
+      api.view = v;
+      bChar.classList.toggle('active', v === 'char');
+      bSheet.classList.toggle('active', v === 'sheet');
+      charBox.classList.toggle('hidden', v !== 'char');
+      sheetBox.classList.toggle('hidden', v !== 'sheet');
+      renderActive();
+    }
+    function renderActive() {
+      if (api.view === 'char') renderPager(charBox, api, ctx);
+      else renderSheet(sheetBox, api, ctx);
+    }
+    bChar.addEventListener('click', function () { setView('char'); });
+    bSheet.addEventListener('click', function () { setView('sheet'); });
+    return api;
+  }
+
+  function cellImg(c, ctx, card) {
+    var burned = c.ash || (ctx.isBurned && ctx.isBurned(c.pos));
+    var img = burned ? ashImg() : inkImg(c.saved, c.ch, 240);
+    if (burned) card.classList.add('burned');
+    return img;
+  }
+
+  // 逐字：一张大纸卡，‹›/滑动逐字翻看，点卡回放
+  function renderPager(box, api, ctx) {
+    box.innerHTML = ''; api.cardByPos = {};
+    var cells = api.cells;
+    if (!cells.length) {
+      box.innerHTML = '<div class="work-empty">还没有写完的字，回去继续吧。</div>';
+      return;
+    }
+    var pager = mkEl('div', 'char-pager');
+    var track = mkEl('div', 'pager-track');
+    cells.forEach(function (c) {
+      var cellWrap = mkEl('div', 'pager-cell');
+      var card = mkEl('div', 'work-char pager-card');
+      card.appendChild(cellImg(c, ctx, card));
+      card.title = '第 ' + (c.pos + 1) + ' 字 · 点击回放落笔';
+      if (ctx.onTap) {
+        (function (pos) { card.addEventListener('click', function () { ctx.onTap(pos); }); })(c.pos);
+      }
+      cellWrap.appendChild(card); track.appendChild(cellWrap);
+      api.cardByPos[c.pos] = card;
+    });
+    pager.appendChild(track);
+    var nav = mkEl('div', 'pager-nav');
+    var prev = mkEl('button', 'btn-ghost pager-btn'); prev.textContent = '‹';
+    var label = mkEl('span', 'pager-label');
+    var next = mkEl('button', 'btn-ghost pager-btn'); next.textContent = '›';
+    function go(i) {
+      api.pagerIdx = Math.max(0, Math.min(cells.length - 1, i));
+      track.style.transform = 'translateX(-' + (api.pagerIdx * 100) + '%)';
+      var c = cells[api.pagerIdx];
+      label.textContent = '第 ' + (api.pagerIdx + 1) + ' / ' + cells.length + ' 字 · ' + c.ch;
+    }
+    api._go = go;
+    prev.addEventListener('click', function () { go(api.pagerIdx - 1); });
+    next.addEventListener('click', function () { go(api.pagerIdx + 1); });
+    var sx = null;
+    pager.addEventListener('touchstart', function (e) { sx = e.touches[0].clientX; }, { passive: true });
+    pager.addEventListener('touchend', function (e) {
+      if (sx === null) return;
+      var dx = e.changedTouches[0].clientX - sx; sx = null;
+      if (dx < -40) go(api.pagerIdx + 1); else if (dx > 40) go(api.pagerIdx - 1);
+    }, { passive: true });
+    nav.appendChild(prev); nav.appendChild(label); nav.appendChild(next);
+    box.appendChild(pager); box.appendChild(nav);
+    go(Math.min(api.pagerIdx, cells.length - 1));
+  }
+
+  // 整纸：宣纸竖排（右起直排），多张纸可翻
+  function renderSheet(box, api, ctx) {
+    box.innerHTML = ''; api.cardByPos = {};
+    var total = api.total, cells = api.cells;
+    var byPos = {};
+    cells.forEach(function (c) { byPos[c.pos] = c; });
+    var slots = [];
+    for (var p = 0; p < total; p++) slots.push(byPos[p] || null);
+    var pages = [];
+    for (var i = 0; i < slots.length; i += SHEET_CAP) pages.push(slots.slice(i, i + SHEET_CAP));
+    if (!pages.length) pages.push([]);
+    function drawPage(pi) {
+      api.sheetIdx = Math.max(0, Math.min(pages.length - 1, pi));
+      box.innerHTML = ''; api.cardByPos = {};
+      var sheet = mkEl('div', 'paper-sheet');
+      pages[api.sheetIdx].forEach(function (c) {
+        var d = mkEl('div', 'sheet-cell');
+        if (c) {
+          var burned = c.ash || (ctx.isBurned && ctx.isBurned(c.pos));
+          d.appendChild(burned ? ashImg() : inkImg(c.saved, c.ch, 120));
+          if (burned) d.classList.add('burned');
+          if (ctx.onTap) {
+            (function (pos) { d.addEventListener('click', function () { ctx.onTap(pos); }); })(c.pos);
+          }
+          api.cardByPos[c.pos] = d;
+        } else {
+          d.classList.add('blank');
+        }
+        sheet.appendChild(d);
+      });
+      box.appendChild(sheet);
+      if (pages.length > 1) {
+        var nav = mkEl('div', 'sheet-nav');
+        var prev = mkEl('button', 'btn-ghost pager-btn'); prev.textContent = '‹';
+        var label = mkEl('span', 'sheet-label');
+        label.textContent = '第 ' + (api.sheetIdx + 1) + ' / ' + pages.length + ' 张';
+        var next = mkEl('button', 'btn-ghost pager-btn'); next.textContent = '›';
+        prev.addEventListener('click', function () { drawPage(api.sheetIdx - 1); });
+        next.addEventListener('click', function () { drawPage(api.sheetIdx + 1); });
+        nav.appendChild(prev); nav.appendChild(label); nav.appendChild(next);
+        box.appendChild(nav);
+      }
+    }
+    api._drawPage = drawPage;
+    drawPage(api.sheetIdx);
+  }
+
   /* ---------- 10. 欣赏 ---------- */
   function openAppreciate() {
     $('work-title').textContent = state.sutra ? '《' + state.sutra.title + '》' : '';
     var d = new Date();
-    var sheet = $('work-sheet');
-    sheet.innerHTML = '';
-    // 从头展示：已存字迹（续写前写好的）+ 本会话新写的，一律按全文序号排
-    var byPos = state.workCharsByPos || {};
-    var full = state.fullChars || state.chars || [];
-    var total = state.totalChars || full.length;
-    var startPos = state.sessionStartPos || 0;
-    var count = 0;
-    for (var pos = 0; pos < total; pos++) {
-      var saved = byPos[pos];
-      var imgSrc = null;
-      if (saved) {
-        // 有落笔记录：按记录重画（与作品查看一致）
-        var cv = document.createElement('canvas');
-        cv.width = cv.height = 240;
-        WritingPad.drawStatic(cv, saved.strokes || {}, saved.ch || full[pos]);
-        imgSrc = cv.toDataURL('image/png');
-      } else if (pos >= startPos && state.workImages[pos - startPos]) {
-        // 兜底：本会话快照（落笔记录未同步时，如断网）
-        imgSrc = state.workImages[pos - startPos];
-      }
-      if (!imgSrc) continue;
-      count++;
-      var div = document.createElement('div');
-      div.className = 'work-char';
-      var img = document.createElement('img');
-      img.src = imgSrc;
-      div.appendChild(img);
-      sheet.appendChild(div);
-    }
+    var cc = collectWorkCells();
     $('work-meta').textContent =
-      '已抄 ' + count + ' / ' + total + ' 字 · ' +
+      '已抄 ' + cc.cells.length + ' / ' + cc.total + ' 字 · ' +
       d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
-    if (!count) {
-      sheet.innerHTML = '<div class="work-empty">还没有写完的字，回去继续吧。</div>';
+    if (!state.appreciateDual) {
+      state.appreciateDual = createDualView($('appreciate-dual'), {
+        onTap: function (pos) { openReplay(pos); },
+        isBurned: function () { return false; }
+      });
     }
+    state.appreciateDual.render(cc.cells, cc.total);
     showScreen('screen-appreciate');
   }
 
@@ -1270,45 +1415,31 @@
     res.chars.forEach(function (c) { byPos[c.pos] = c; });
     state.workCharsByPos = byPos;
     var dedicated = !!w.dedicated_at;
-    var ashSet = {};
-    (w.ash_cells || []).forEach(function (p) { ashSet[p] = 1; });
-    // 欣赏式纸卡：写过的字按书写顺序展示手写纸卡（点卡回放落笔）；已回向则只显示尘埃卡
-    var sheet = $('workview-sheet');
-    sheet.innerHTML = '';
-    state.workCardByPos = {};
-    for (var i = 0; i < state.chars.length; i++) {
-      (function (pos) {
-        if (dedicated && !ashSet[pos]) return;
-        var saved = byPos[pos];
-        if (!dedicated && !saved) return; // 未写的字不占位，底部统一提示
-        var ch = state.chars[pos];
-        var card = document.createElement('div');
-        card.className = 'work-char';
-        var img = document.createElement('img');
-        if (dedicated) {
-          img.src = randomAsh();
-          card.classList.add('burned');
-        } else {
-          var cv = document.createElement('canvas');
-          cv.width = cv.height = 240;
-          WritingPad.drawStatic(cv, saved.strokes || {}, ch);
-          img.src = cv.toDataURL('image/png');
-          img.alt = ch;
-          card.title = '点击回放第 ' + (pos + 1) + ' 字';
-          card.addEventListener('click', function () { openReplay(pos); });
-        }
-        card.appendChild(img);
-        sheet.appendChild(card);
-        state.workCardByPos[pos] = card;
-      })(i);
+    // 双视图：逐字 / 整纸；写过的字展示手写纸卡（点卡回放落笔）；已回向则只显示尘埃卡
+    var cells = [];
+    if (dedicated) {
+      (w.ash_cells || []).slice().sort(function (a, b) { return a - b; }).forEach(function (pos) {
+        cells.push({ pos: pos, ch: state.chars[pos], ash: true });
+      });
+    } else {
+      for (var i = 0; i < state.chars.length; i++) {
+        var saved = byPos[i];
+        if (saved) cells.push({ pos: i, ch: saved.ch || state.chars[i], saved: saved });
+      }
     }
+    if (!state.workviewDual) {
+      state.workviewDual = createDualView($('workview-dual'), {
+        onTap: function (pos) {
+          var cw = state.workData && state.workData.work;
+          if (cw && !cw.dedicated_at) openReplay(pos);
+        },
+        isBurned: function () { return false; }
+      });
+    }
+    state.workviewDual.render(cells, state.chars.length);
     var undone = w.chars_total - w.chars_done;
-    if (!dedicated && undone > 0) {
-      var hint = document.createElement('div');
-      hint.className = 'work-empty-hint';
-      hint.textContent = '还有 ' + undone + ' 字未写 · 点「续写」继续';
-      sheet.appendChild(hint);
-    }
+    $('workview-hint').textContent =
+      (!dedicated && undone > 0) ? '还有 ' + undone + ' 字未写 · 点「续写」继续' : '';
     // 按钮：续写（写完则隐藏）；分享/删除仅作者；回向仅登录作者且未回向
     var finished = w.chars_done >= w.chars_total && w.chars_total > 0;
     var isOwner = w.role === 'owner';
@@ -1667,15 +1798,27 @@
     barEl.style.width = '0%';
     $('ceremony-banner').classList.remove('collapsed');
     $('ceremony-fold').textContent = '收起 ↑';
+    // 仪式舞台：双视图（逐字/整纸），字迹在当前视图的字卡上燃烧
+    var byPosC = state.workCharsByPos || {};
+    var fullC = state.fullChars || state.chars || [];
+    var cellsC = ashCells.map(function (p) {
+      var s = byPosC[p];
+      return { pos: p, ch: (s && s.ch) || fullC[p], saved: s };
+    });
+    var burnedSet = {};
+    var dual = createDualView($('ceremony-stage'), {
+      onTap: null, // 仪式中不点播回放
+      isBurned: function (pos) { return !!burnedSet[pos]; }
+    });
+    dual.render(cellsC, state.totalChars || fullC.length);
+    try { $('ceremony-stage').scrollTop = 0; } catch (e) {}
     overlay.classList.remove('hidden');
-    try { $('workview-sheet').scrollIntoView({ block: 'start' }); } catch (e) {}
     var n = ashCells.length;
-    var cardByPos = state.workCardByPos || {};
     var readPos = 0;             // 朗读到的字符位置（进度之源）
     var boundarySeen = false;    // TTS 是否给出 boundary 事件
     var silent = false;          // 无中文嗓音：静默仪式
     var ttsEnded = false, ttsDone = false, finDone = false;
-    var highlighted = 0, ignited = 0, burned = 0;
+    var highlighted = 0, ignited = 0, burnedCount = 0;
     function paintProgress() {
       var prog = Math.min(1, readPos / text.length);
       barEl.style.width = (prog * 100).toFixed(1) + '%';
@@ -1685,12 +1828,15 @@
       while (ignited < b) { igniteCell(ignited); ignited++; }
     }
     function igniteCell(i) {
-      var card = cardByPos[ashCells[i]];
-      if (!card) { burned++; checkFinish(); return; }
-      burnCell(card, 750 + Math.random() * 550, function () { burned++; checkFinish(); });
+      var pos = ashCells[i];
+      burnedSet[pos] = 1;
+      if (dual.view === 'char') dual.goTo(i); // 逐字：翻到正在烧的那张
+      var card = dual.cardByPos[pos];
+      if (!card) { burnedCount++; checkFinish(); return; }
+      burnCell(card, 750 + Math.random() * 550, function () { burnedCount++; checkFinish(); });
     }
     function checkFinish() {
-      if (finDone || !ttsDone || burned < n) return;
+      if (finDone || !ttsDone || burnedCount < n) return;
       finDone = true;
       clearInterval(tick);
       spans.forEach(function (s) { s.className = 'ch-read'; });
@@ -1748,7 +1894,7 @@
     var saved = (state.workCharsByPos || {})[pos];
     if (!saved) return;
     replayPos = pos;
-    var ch = state.chars[pos];
+    var ch = ((state.fullChars || state.chars || [])[pos]) || '';
     $('replay-label').textContent = '第 ' + (pos + 1) + ' 字 · ' + ch;
     $('replay-overlay').classList.remove('hidden');
     if (!replayPad) replayPad = new WritingPad($('replay-paper'), $('replay-ink'), {});
