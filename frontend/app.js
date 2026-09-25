@@ -494,17 +494,31 @@
   }
 
   function renderLibrary(sutras) {
+    // 空分类不显示：没有同修上传 / 没有道经时，隐藏对应筛选
+    var hasCustom = sutras.some(function (s) { return s.tradition === 'custom'; });
+    var hasTaoist = sutras.some(function (s) { return s.tradition === 'taoist'; });
+    var customChip = document.querySelector('#screen-library .chip[data-trad="custom"]');
+    var taoistChip = document.querySelector('#screen-library .chip[data-trad="taoist"]');
+    if (customChip) customChip.style.display = hasCustom ? '' : 'none';
+    if (taoistChip) taoistChip.style.display = hasTaoist ? '' : 'none';
+    // 当前选中的筛选若已无内容，切回"全部"
+    if ((state.filter === 'custom' && !hasCustom) || (state.filter === 'taoist' && !hasTaoist)) {
+      state.filter = 'all';
+      document.querySelectorAll('#screen-library .chip').forEach(function (c) {
+        c.classList.toggle('active', c.dataset.trad === 'all');
+      });
+    }
     var list = $('sutra-list');
     list.innerHTML = '';
     sutras
       .filter(function (s) { return state.filter === 'all' || s.tradition === state.filter; })
       .forEach(function (s) {
         var li = document.createElement('li');
-        var trad = s.tradition === 'buddhist' ? '佛经' : (s.tradition === 'taoist' ? '道经' : '自传');
+        var trad = s.tradition === 'buddhist' ? '佛经' : (s.tradition === 'taoist' ? '道经' : '同修');
         var todo = s.char_count === 0 ? '<span class="badge-todo">待补充全文</span>' : '';
         var upBadge = '';
         if (s.source === 'upload') {
-          upBadge = '<span class="badge-upload">自传 · ' + (s.visibility === 'public' ? '公开' : '私有') + (s.mine ? ' · 我的' : '') + '</span>';
+          upBadge = '<span class="badge-upload">同修 · ' + (s.visibility === 'public' ? '公开' : '私有') + (s.mine ? ' · 我的' : '') + '</span>';
         }
         li.innerHTML =
           '<div class="sutra-title">' + escapeHtml(s.title) + todo + upBadge + '</div>' +
