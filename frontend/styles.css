@@ -285,6 +285,11 @@ button:active { transform: scale(0.97); }
 .work-card .wc-bar i { display: block; height: 100%; background: var(--gold); border-radius: 2px; }
 .work-empty-hint { font-size: 13px; color: var(--ink-dim); padding: 4px 16px; }
 
+/* 抄本集合屏：按经文归集 */
+.collection-group { margin: 6px 0 18px; }
+.collection-head { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; margin-bottom: 4px; }
+.collection-name { font-size: 15px; font-weight: 600; color: var(--ink); }
+
 #workview-head { padding: 0 16px; }
 .workview-actions { display: flex; gap: 10px; margin: 12px 0; }
 /* 作品查看已改欣赏式纸卡（.work-char），旧字格样式移除 */

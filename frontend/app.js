@@ -197,7 +197,6 @@
       s.classList.toggle('active', s.id === id);
     });
     window.scrollTo(0, 0);
-    if (id === 'screen-library') refreshLibraryWorks();
     if (id === 'screen-write' && $('write-ui')) $('write-ui').style.display = '';
     setScreenTools(toolsFor(id)); // 各屏功能按钮收拢进全局工具按钮
   }
@@ -227,7 +226,17 @@
   // 各屏的功能按钮清单（书写屏用自己的工具菜单，不走全局；顶栏已全部移除）
   function toolsFor(id) {
     if (id === 'screen-library') {
-      return getToken() ? [{ label: '上传经书', onClick: openUploadDialog }] : [{ label: '登录', onClick: gotoLogin }];
+      var items = [{ label: '公开抄本', onClick: function () { openCollection('public'); } }];
+      if (getToken()) {
+        items.push({ label: '我的抄本', onClick: function () { openCollection('mine'); } });
+        items.push({ label: '上传经书', onClick: openUploadDialog });
+      } else {
+        items.push({ label: '登录', onClick: gotoLogin });
+      }
+      return items;
+    }
+    if (id === 'screen-collection') {
+      return [{ label: '经文库', onClick: function () { showScreen('screen-library'); } }];
     }
     if (id === 'screen-work') {
       return workScreenTools();
@@ -711,49 +720,38 @@
     });
   }
 
-  /* ---------- 4. 点经文：写过/写完的直达欣赏，没写过的直达抄写 ---------- */
+  /* ---------- 4. 点经文：永远直达抄写（开一份新作品；旧作去「我的抄本」续写/欣赏） ---------- */
   function openSutra(id, done) {
-    var proceed = function () {
-      var mine = (state.myWorks || []).filter(function (w) { return w.sutra_id === id; });
-      if (mine.length) { if (done) done(); openWork(mine[0].id); return; }
-      // 新经：手势链内先解锁音频，再拉经文，直达抄写界面
-      try { if (!state.musicOn) { music.start(); state.musicOn = true; } } catch (e) {}
-      api('/api/sutra/' + encodeURIComponent(id)).then(function (res) {
-        if (done) done();
-        if (!res.ok) { stopPreMusic(); alert(res.message || '加载失败，请重试'); return; }
-        var clean = (res.sutra.full_text || '').replace(/\s+/g, '');
-        state.fullChars = clean.split(''); // 全文（欣赏页用；书写时 state.chars 为段内）
-        if (!clean.length) {
-          stopPreMusic();
-          alert('《' + res.sutra.title + '》全文待补充，敬请期待');
-          return;
-        }
-        state.sutra = res.sutra;
-        state.paras = splitParagraphs(clean);
-        state.totalChars = clean.length;
-        setPara(0);
-        state.workImages = [];
-        state.sessionStartPos = 0; // 新开：本会话快照从全文 0 开始
-        state.completing = false;
-        state.work = null;      // 新开一部作品（懒创建）
-        state.workData = null;
-        state.workCharsByPos = {}; // 新开：清空旧字迹表（欣赏页从头只显示本部）
-        state.flowToken++;
-        music.setConfig(res.sutra.music_config || {});
-        startWriting(state.flowToken); // 直达抄写（字体可在书写屏 ☰ → 字体 中换）
-      }).catch(function () {
-        if (done) done();
+    // 新经：手势链内先解锁音频，再拉经文，直达抄写界面
+    try { if (!state.musicOn) { music.start(); state.musicOn = true; } } catch (e) {}
+    api('/api/sutra/' + encodeURIComponent(id)).then(function (res) {
+      if (done) done();
+      if (!res.ok) { stopPreMusic(); alert(res.message || '加载失败，请重试'); return; }
+      var clean = (res.sutra.full_text || '').replace(/\s+/g, '');
+      state.fullChars = clean.split(''); // 全文（欣赏页用；书写时 state.chars 为段内）
+      if (!clean.length) {
         stopPreMusic();
-        alert('网络错误，请重试');
-      });
-    };
-    if (state.myWorksLoaded) { proceed(); return; }
-    // 我的作品还没拉到：先拉再分流（点经文时已显示"加载中…"）
-    api('/api/my/works').then(function (res) {
-      state.myWorks = (res && res.ok && res.works) || [];
-      state.myWorksLoaded = true;
-      proceed();
-    }).catch(function () { state.myWorksLoaded = true; proceed(); });
+        alert('《' + res.sutra.title + '》全文待补充，敬请期待');
+        return;
+      }
+      state.sutra = res.sutra;
+      state.paras = splitParagraphs(clean);
+      state.totalChars = clean.length;
+      setPara(0);
+      state.workImages = [];
+      state.sessionStartPos = 0; // 新开：本会话快照从全文 0 开始
+      state.completing = false;
+      state.work = null;      // 新开一部作品（懒创建）
+      state.workData = null;
+      state.workCharsByPos = {}; // 新开：清空旧字迹表（欣赏页从头只显示本部）
+      state.flowToken++;
+      music.setConfig(res.sutra.music_config || {});
+      startWriting(state.flowToken); // 直达抄写（字体可在书写屏 ☰ → 字体 中换）
+    }).catch(function () {
+      if (done) done();
+      stopPreMusic();
+      alert('网络错误，请重试');
+    });
   }
   function stopPreMusic() {
     try { music.stop(); } catch (e) {}
@@ -1722,16 +1720,58 @@
     });
   }
 
-  function refreshLibraryWorks() {
-    api('/api/my/works').then(function (res) {
-      var works = (res && res.ok && res.works) || [];
-      state.myWorks = works; state.myWorksLoaded = true; // 点经文智能分流用
-      $('my-works-title').style.display = works.length ? '' : 'none';
-      renderWorkCards($('my-works'), works, true);
-    }).catch(function () { state.myWorksLoaded = true; });
-    api('/api/works?limit=24').then(function (res) {
-      renderWorkCards($('public-works'), (res && res.ok && res.works) || [], false);
-    }).catch(function () {});
+  /* ---------- 抄本集合：按经文归集（公开抄本 / 我的抄本） ---------- */
+  function openCollection(mode) {
+    state.collectionMode = mode;
+    $('collection-title').textContent = mode === 'mine' ? '我的抄本' : '公开抄本';
+    $('collection-groups').innerHTML = '<div class="work-empty-hint">加载中…</div>';
+    showScreen('screen-collection');
+    var url = mode === 'mine' ? '/api/my/works' : '/api/works?limit=60';
+    api(url).then(function (res) {
+      renderCollection((res && res.ok && res.works) || []);
+    }).catch(function () {
+      renderCollection([]);
+    });
+  }
+
+  function renderCollection(works) {
+    var groups = {}, order = [];
+    works.forEach(function (w) {
+      var k = w.sutra_id || 'unknown';
+      if (!groups[k]) { groups[k] = { title: w.title || '佚名经文', works: [], updated: '' }; order.push(k); }
+      groups[k].works.push(w);
+      if ((w.updated_at || '') > groups[k].updated) groups[k].updated = w.updated_at || '';
+    });
+    order.sort(function (a, b) { return groups[a].updated < groups[b].updated ? 1 : -1; });
+    var box = $('collection-groups');
+    box.innerHTML = '';
+    if (!order.length) {
+      box.innerHTML = '<div class="work-empty-hint">' +
+        (state.collectionMode === 'mine' ? '还没有作品，去抄一段经吧。' : '还没有公开抄本。') + '</div>';
+      return;
+    }
+    order.forEach(function (k) {
+      var g = groups[k];
+      var sec = document.createElement('div');
+      sec.className = 'collection-group';
+      var head = document.createElement('div');
+      head.className = 'collection-head';
+      var t = document.createElement('span');
+      t.className = 'collection-name';
+      t.textContent = '《' + g.title + '》 · ' + g.works.length + ' 幅';
+      head.appendChild(t);
+      var go = document.createElement('button');
+      go.className = 'btn-mini';
+      go.textContent = '去抄写';
+      go.addEventListener('click', function () { openSutra(k); });
+      head.appendChild(go);
+      sec.appendChild(head);
+      var cards = document.createElement('div');
+      cards.className = 'work-cards';
+      renderWorkCards(cards, g.works, state.collectionMode === 'mine');
+      sec.appendChild(cards);
+      box.appendChild(sec);
+    });
   }
 
   // 打开作品：viewer（只读/续写），share 为分享 token 时只读
