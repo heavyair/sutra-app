@@ -39,6 +39,12 @@
     var savedGamma = null;
     try { savedGamma = localStorage.getItem('sutra_gamma40'); } catch (e) {}
     this._gammaOn = savedGamma !== '0';
+    // 低音声部风格：'drone' 持续低音（默认）/ 'bigchime' 大罄，localStorage 记住
+    var savedBass = null;
+    try { savedBass = localStorage.getItem('sutra_bass'); } catch (e) {}
+    this._bassStyle = savedBass === 'bigchime' ? 'bigchime' : 'drone';
+    this._bassNodes = [];   // drone 振荡器（切换风格时停掉）
+    this._bassTimers = [];  // 大罄敲击定时器
   }
 
   MusicEngine.prototype.setConfig = function (cfg) {
@@ -92,10 +98,41 @@
     osc.stop(when + dur + 0.1);
   };
 
-  // L0：持续低音（根音 + 高五度），极慢呼吸式起伏
+  // L0 低音声部：两种风格可选（'drone' 持续低音 / 'bigchime' 大罄）
+  MusicEngine.prototype._stopBass = function () {
+    if (this._bassNodes) {
+      this._bassNodes.forEach(function (n) { try { n.stop(); } catch (e) {} });
+      this._bassNodes = [];
+    }
+    if (this._bassTimers) {
+      this._bassTimers.forEach(clearTimeout);
+      this._bassTimers = [];
+    }
+  };
+
+  // 低音风格调度：先停旧声部，再按当前风格启动；L0 总线不断层
+  MusicEngine.prototype._startBass = function () {
+    this._stopBass();
+    if (this._bassStyle === 'bigchime') this._startBigChime();
+    else this._startDrone();
+    if (this.ctx) this.layers.L0.gain.setTargetAtTime(1, this.ctx.currentTime, 2);
+  };
+
+  // 低音风格：用户二选一（播放中即时切换，记住选择）
+  MusicEngine.prototype.setBassStyle = function (s) {
+    this._bassStyle = (s === 'bigchime') ? 'bigchime' : 'drone';
+    try { localStorage.setItem('sutra_bass', this._bassStyle); } catch (e) {}
+    if (this.playing) this._startBass();
+  };
+  MusicEngine.prototype.getBassStyle = function () {
+    return this._bassStyle === 'bigchime' ? 'bigchime' : 'drone';
+  };
+
+  // L0 持续低音（根音 + 高五度），极慢呼吸式起伏
   MusicEngine.prototype._startDrone = function () {
     var ctx = this.ctx, root = this.config.root_midi;
     var self = this;
+    this._bassNodes = [];
     [0, 7].forEach(function (iv, i) {
       var osc = ctx.createOscillator();
       osc.type = 'sine';
@@ -109,8 +146,42 @@
       lfo.connect(lfoG); lfoG.connect(g.gain);
       osc.connect(g); g.connect(self.layers.L0);
       osc.start(); lfo.start();
+      self._bassNodes.push(osc, lfo);
     });
-    this.layers.L0.gain.setTargetAtTime(1, ctx.currentTime, 2);
+  };
+
+  // 大罄：一击深沉寺磬（低八度 + 非谐泛音列，自然衰减十几秒）
+  MusicEngine.prototype._bigChime = function (when) {
+    var ctx = this.ctx, self = this;
+    var base = midiToFreq(this.config.root_midi - 12);
+    // [倍频, 相对音量, 衰减秒数]
+    [[1, 1.0, 20], [2.01, 0.45, 15], [2.74, 0.30, 12], [3.76, 0.18, 9], [5.43, 0.10, 7]].forEach(function (pr) {
+      var osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = base * pr[0];
+      var g = ctx.createGain();
+      g.gain.setValueAtTime(0, when);
+      g.gain.linearRampToValueAtTime(0.085 * pr[1], when + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, when + pr[2]);
+      osc.connect(g);
+      g.connect(self.layers.L0);
+      osc.start(when);
+      osc.stop(when + pr[2] + 0.5);
+    });
+  };
+
+  // 大罄：低音声部一直开，每 28~52 秒敲一声
+  MusicEngine.prototype._startBigChime = function () {
+    var self = this;
+    this._bassTimers = [];
+    function tick() {
+      if (!self.playing) return;
+      self._bigChime(self.ctx.currentTime + 0.05);
+      self._bassTimers.push(setTimeout(tick, 28000 + Math.random() * 24000));
+    }
+    // 开场先敲一声，确立低音
+    this._bigChime(this.ctx.currentTime + 0.1);
+    this._bassTimers.push(setTimeout(tick, 28000 + Math.random() * 24000));
   };
 
   // L1 轻磬：纯净柔和，一声、余韵悠长（近谐泛音，无滑音）
@@ -301,7 +372,7 @@
     this._wantSpring = false;    // 泉消条件：慢写
     this._wantRain = false;      // 细雨条件：连续慢写4字
     this._chimeArmed = false;    // 高音实际可触发 = 条件成立且非疾书
-    this._startDrone();
+    this._startBass();
     this._startGamma();
     this._startLightChimes();
     this._startPad();

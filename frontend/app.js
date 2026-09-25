@@ -1216,7 +1216,7 @@
   document.querySelectorAll('.tool-item').forEach(function (b) {
     b.addEventListener('click', function () {
       var t = b.dataset.tool;
-      if (t === 'font') {
+      if (t === 'font' || t === 'bass') {
         // 选项类工具：菜单内联展开，不关菜单、不弹新界面
         openToolPanel(t, b);
         return;
@@ -1245,7 +1245,7 @@
     });
   });
 
-  // 选项类工具（字体/背景音）：在工具菜单内联展开选项面板，不弹新界面、不切屏；
+  // 选项类工具（字体/低音）：在工具菜单内联展开选项面板，不弹新界面、不切屏；
   // 再点一次该按钮收起
   function openToolPanel(t, btn) {
     var menu = $('tools-menu');
@@ -1262,6 +1262,7 @@
     var body = $('tool-panel-body');
     body.innerHTML = '';
     if (t === 'font') renderFontPanel(body);
+    else if (t === 'bass') renderBassPanel(body);
     panel.classList.remove('hidden');
   }
 
@@ -1298,6 +1299,36 @@
       state.font = f;
       if (pad) pad.setFont(f.stack);
       if (pad && !state.completing) pad.newChar(state.chars[state.charIndex]); // 新字体重画虚影
+    });
+  }
+
+  // 低音面板：持续低音 / 大罄二选一，点选即生效
+  function renderBassPanel(body) {
+    var title = document.createElement('div');
+    title.className = 'pick-label';
+    title.textContent = '低音';
+    var wrap = document.createElement('div');
+    wrap.className = 'pick-cards';
+    body.appendChild(title);
+    body.appendChild(wrap);
+    var styles = [
+      { id: 'drone', name: '持续低音', desc: '正弦铺底，呼吸起伏' },
+      { id: 'bigchime', name: '大罄', desc: '深沉寺磬，定时敲击' }
+    ];
+    var cur = 'drone';
+    try { cur = music.getBassStyle ? music.getBassStyle() : 'drone'; } catch (e) {}
+    wrap.innerHTML = '';
+    styles.forEach(function (s) {
+      var b = document.createElement('button');
+      b.className = 'pick-card' + (s.id === cur ? ' selected' : '');
+      b.innerHTML = '<span><span class="pick-name">' + s.name + '</span>' +
+        '<span class="pick-desc" style="display:block">' + s.desc + '</span></span>';
+      b.addEventListener('click', function () {
+        wrap.querySelectorAll('.pick-card').forEach(function (x) { x.classList.remove('selected'); });
+        b.classList.add('selected');
+        try { music.setBassStyle(s.id); } catch (e) {}
+      });
+      wrap.appendChild(b);
     });
   }
 
