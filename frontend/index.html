@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1a1611">
 <title>抄经 · 静心</title>
-<link rel="stylesheet" href="styles.css?v=56">
+<link rel="stylesheet" href="styles.css?v=57">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@600&display=swap">
 </head>
@@ -87,6 +87,18 @@
         <h3>选择字体</h3>
         <div id="font-cards-2" class="pick-cards"></div>
         <button id="btn-font-done" class="btn-primary btn-big">确定</button>
+      </div>
+    </div>
+
+    <!-- 背景音：场景 + 调制（工具内） -->
+    <div id="music-overlay" class="picker-overlay hidden">
+      <div class="picker-card">
+        <h3>背景音</h3>
+        <div class="pick-label">场景</div>
+        <div id="scene-chips" class="chip-row"></div>
+        <div class="pick-label">调制</div>
+        <div id="mod-chips" class="chip-row"></div>
+        <button id="btn-music-done" class="btn-primary btn-big">确定</button>
       </div>
     </div>
 
@@ -264,8 +276,8 @@
 <!-- 打印专用：屏幕上隐藏，打印时显示 -->
 <div id="print-sheet"></div>
 
-<script src="music.js?v=56"></script>
-<script src="writing.js?v=56"></script>
-<script src="app.js?v=56"></script>
+<script src="music.js?v=57"></script>
+<script src="writing.js?v=57"></script>
+<script src="app.js?v=57"></script>
 </body>
 </html>

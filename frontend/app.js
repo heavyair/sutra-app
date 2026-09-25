@@ -869,7 +869,8 @@
     pad.setFont(state.font.stack);
     pad.setPen(state.pen.id);
     // 开乐（用户手势链中，可直接启动 AudioContext）；显示经文时静音
-    if (!state.musicOn) { music.start(); state.musicOn = true; }
+    // music.start() 包 try：音乐失败也不能挡住 beginChar（否则虚影字出不来）
+    try { if (!state.musicOn) { music.start(); state.musicOn = true; } } catch (e) {}
     try { music.setAudible(false); } catch (e) {}
 
     var overlay = $('intro-overlay');
@@ -1024,27 +1025,33 @@
       if (called) return;
       called = true;
       var pc = $('paper-canvas');
+      var lastOfPara = isPunct(ch) && state.charIndex >= state.chars.length - 1;
       if (!isPunct(ch)) {
         // 新字显现：写得快 → 慢显（1s 淡入）；写得慢 → 快现（0.35s）
         var fadeMs = state.pace === 'fast' ? 1000 : 350;
         pc.style.transition = 'none';
         pc.style.opacity = '0';
         pad.newChar(ch);
-        requestAnimationFrame(function () {
-          requestAnimationFrame(function () {
-            pc.style.transition = 'opacity ' + fadeMs + 'ms ease';
-            pc.style.opacity = '1';
-          });
-        });
-      } else {
+        var pcShown = false;
+        var showPc = function () {
+          if (pcShown) return;
+          pcShown = true;
+          pc.style.transition = 'opacity ' + fadeMs + 'ms ease';
+          pc.style.opacity = '1';
+        };
+        requestAnimationFrame(function () { requestAnimationFrame(showPc); });
+        setTimeout(showPc, 500); // 兜底：rAF 被系统节流时也能显现虚影字
+      } else if (!lastOfPara) {
         pc.style.transition = 'none';
         pc.style.opacity = '1';
         pad.newChar(ch);
       }
+      // 段末标点不画虚影字（纸面留白），由 punctAdvanceSilent 静默收录后进下一段
       if (isPunct(ch)) {
         // 标点直接跳过：静默盖印收录，不展示，立即进下一字
         if (token !== state.flowToken || state.completing) return;
-        punctAdvance();
+        if (lastOfPara) punctAdvanceSilent();
+        else punctAdvance();
       }
     };
     try {
@@ -1081,6 +1088,31 @@
     } else {
       beginChar();
     }
+  }
+
+  // 段末标点（beginChar 已跳过虚影绘制）：只收录不展示——
+  // 先清墨层再盖印、快照收录后立即清掉，纸面保持上一字虚影；
+  // 待"标点消失"的 800ms 淡出后，再显示下一段经文
+  function punctAdvanceSilent() {
+    if (state.completing) return;
+    cancelPendingComplete();
+    pad.clearInk();
+    pad.stampChar(state.chars[state.charIndex]);
+    var img = pad.snapshot();
+    if (img) state.workImages.push(img);
+    pad.clearInk(); // 不展示盖印
+    updateProgress();
+    saveCharToServer();
+    state.lastCharEnd = Date.now();
+    state.charIndex++;
+    var token = state.flowToken;
+    state.paraEndFading = true;
+    pad.fadeOut(800, function () {
+      state.paraEndFading = false;
+      if (token !== state.flowToken) return;
+      if (state.paraIndex < state.paras.length - 1) nextParagraph();
+      else showDone();
+    });
   }
 
   function charComplete() {
@@ -1190,9 +1222,8 @@
         });
         $('font-overlay').classList.remove('hidden');
       } else if (t === 'music') {
-        var on = music.toggle();
-        state.musicOn = on;
-        b.classList.toggle('off', !on);
+        renderMusicChips();
+        $('music-overlay').classList.remove('hidden');
       } else if (t === 'view') {
         openWorkLocal();
       } else if (t === 'share') {
@@ -1214,8 +1245,35 @@
     if (pad && !state.completing) pad.newChar(state.chars[state.charIndex]); // 新字体重画虚影
   });
 
+  // 背景音选择面板：场景 + 调制，即时生效并记住选择
+  function renderMusicChips() {
+    var scenes = MusicEngine.getScenes();
+    var mods = MusicEngine.getModulations();
+    var curScene = music.getScene();
+    var curMod = music.getModulation();
+    function chips(el, items, cur, onPick) {
+      el.innerHTML = '';
+      items.forEach(function (it) {
+        var c = document.createElement('button');
+        c.className = 'chip' + (it.id === cur ? ' selected' : '');
+        c.textContent = it.name;
+        c.addEventListener('click', function () {
+          onPick(it.id);
+          Array.prototype.forEach.call(el.children, function (x) { x.classList.remove('selected'); });
+          c.classList.add('selected');
+        });
+        el.appendChild(c);
+      });
+    }
+    chips($('scene-chips'), scenes, curScene, function (id) { music.setScene(id); });
+    chips($('mod-chips'), mods, curMod, function (id) { music.setModulation(id); });
+  }
+  $('btn-music-done').addEventListener('click', function () {
+    $('music-overlay').classList.add('hidden');
+  });
+
   function hideOverlays() {
-    ['font-overlay', 'done-overlay'].forEach(function (id) {
+    ['font-overlay', 'music-overlay', 'done-overlay'].forEach(function (id) {
       $(id).classList.add('hidden');
     });
     $('intro-overlay').classList.add('hidden');
@@ -1915,11 +1973,14 @@
     closeTools();
     hideOverlays();
     ensurePad();
+    // 续写：强制画布与当前布局同步（Android 切屏后 backing store 可能错位，
+    // 虚影字画不上——用户切到其他 App 再回来会触发 resize 重绘，这里主动做一次）
+    try { pad._resize(); } catch (e) {}
     // 续写：节奏同样复位为慢，直接进入书写（无段落显示）
     resetParaRhythm();
     pad.setFont(state.font.stack);
     pad.setPen(state.pen.id);
-    if (!state.musicOn) { music.start(); state.musicOn = true; }
+    try { if (!state.musicOn) { music.start(); state.musicOn = true; } } catch (e) {}
     try { music.setAudible(true); } catch (e) {}
     try { music.startRecording(); } catch (e) {}
     beginChar();

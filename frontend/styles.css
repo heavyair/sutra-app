@@ -123,6 +123,20 @@ button:active { transform: scale(0.97); }
 }
 .pick-card .pick-name { font-size: 19px; letter-spacing: 3px; }
 .pick-card .pick-desc { font-size: 13px; color: var(--ink-dim); margin-top: 4px; }
+/* 背景音：场景/调制选项 chips */
+.chip-row {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  padding: 0 20px; margin-bottom: 18px;
+}
+.chip-row .chip {
+  border: 1px solid var(--line); border-radius: 999px;
+  background: transparent; color: var(--ink);
+  font-size: 15px; padding: 8px 16px; cursor: pointer;
+}
+.chip-row .chip.selected {
+  border-color: var(--gold); color: var(--gold);
+  background: #33291a;
+}
 .picker-foot { padding: 20px; }
 .picker-foot .btn-secondary { width: 100%; margin-top: 10px; }
 

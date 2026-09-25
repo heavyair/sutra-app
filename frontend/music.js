@@ -2,15 +2,18 @@
  *
  * 设计：
  * - 以中国五声音阶（宫商角徵羽）为音高材料，相对半音 [0, 2, 4, 7, 9]
- * - 每部经文配一组参数：{ root_midi, tempo_bpm, timbre, mood, gamma }
+ * - 每部经文配一组参数：{ root_midi, tempo_bpm, timbre, mood }（调制频率由用户全局选择）
  * - 声部：
- *     L0 持续低音 drone（一直开）
- *     L1 轻磬：纯净柔和的磬声，余韵悠长（书写慢/停时浮现）
- *     L2 和声铺底 pad（p > 0.45；写得快时降到三成）
- *     L3 小磬 + 泉消 + 细雨（书写慢/停时浮现）
- *     L4 gamma 脑波层（一直开）
+ *     L0 持续低音 drone（一直开，按场景缩放）
+ *     L1 轻磬：纯净柔和的磬声，余韵悠长（书写慢/停时浮现，按场景缩放/疏密）
+ *     L2 和声铺底 pad（p > 0.45；写得快时降到三成；按场景缩放）
+ *     L3 小磬 + 泉消 + 细雨 + 风层（书写慢/停时浮现；风层为各场景的可调滤波噪声）
+ *     L4 调制层（用户自选频率；默认 Gamma 44Hz；脑波类用双耳搏动实现）
+ * - 场景（用户自选，默认"密"）：静 / 山 / 风 / 谷 / 海 / 林 / 沙 / 崖 / 密
+ * - 调制（用户自选，默认 Gamma 44Hz）：关 / Gamma 44 / Delta / Theta /
+ *   Schumann 7.83 / Alpha / 索尔费乔 174-963Hz
  * - 书写 activity 0~1（0=静止/慢，1=疾书）：setActivity() 设目标，
- *   内部每 0.7s 平滑跟随；activity 高 → 自然声部淡出，只留 L0 + gamma
+ *   内部每 0.7s 平滑跟随；activity 高 → 自然声部淡出，只留 L0 + 调制层
  * - 自然声出现条件（setNatureFlags({chime, spring, rain})，由 app.js 按书写节奏评估）：
  *     chime（高音：L1 轻磬 / L3 小磬）：停笔时间 > 用户通常 5 个字的换字时间
  *     spring（泉消）：慢写（本字书写超过前两个字）
@@ -21,6 +24,48 @@
 
   // 宫 商 角 徵 羽（相对半音）
   var PENTA = [0, 2, 4, 7, 9];
+
+  // 背景音场景：drone/pad 缩放；chime 缩放+疏密；spring/rain 缩放；
+  // wind 为可调滤波噪声（type/freq/q/lfo/gain），null 表示该场景无风层
+  var SCENES = {
+    silent:   { name: '静', silent: true },
+    mountain: { name: '山', drone: 1,   pad: 0.4, chime: 0.6,  spring: 0,   rain: 0,
+                wind: { type: 'bandpass', freq: 350,  q: 0.6, lfo: 0.05, gain: 0.022 } },
+    wind:     { name: '风', drone: 0.3, pad: 0,   chime: 0.2,  spring: 0,   rain: 0,
+                wind: { type: 'bandpass', freq: 750,  q: 0.5, lfo: 0.09, gain: 0.035 } },
+    valley:   { name: '谷', drone: 0.8, pad: 0.7, chime: 1.3,  spring: 0.6, rain: 0,
+                wind: { type: 'bandpass', freq: 1100, q: 0.7, lfo: 0.045, gain: 0.014 } },
+    ocean:    { name: '海', drone: 0.5, pad: 0.5, chime: 0.3,  spring: 0,   rain: 0,
+                wind: { type: 'lowpass',  freq: 420,  q: 0.4, lfo: 0.075, gain: 0.05 } },
+    forest:   { name: '林', drone: 0.6, pad: 0.3, chime: 0.9,  spring: 0.3, rain: 0.5,
+                wind: { type: 'highpass', freq: 5200, q: 0.6, lfo: 0.12, gain: 0.008 } },
+    desert:   { name: '沙', drone: 0.4, pad: 0,   chime: 0.15, spring: 0,   rain: 0,
+                wind: { type: 'bandpass', freq: 550,  q: 0.7, lfo: 0.06, gain: 0.018 } },
+    cliff:    { name: '崖', drone: 0.7, pad: 0,   chime: 0.2,  spring: 0,   rain: 0,
+                wind: { type: 'bandpass', freq: 2100, q: 2.5, lfo: 0.11, gain: 0.016 } },
+    dense:    { name: '密', drone: 1,   pad: 1,   chime: 1,    spring: 1,   rain: 1, wind: null },
+  };
+  var SCENE_IDS = ['silent', 'mountain', 'wind', 'valley', 'ocean', 'forest', 'desert', 'cliff', 'dense'];
+
+  // 调制频率：beat 为双耳搏动差频（载波 180Hz），hz 为单音正弦
+  var MODS = [
+    { id: 'off',      name: '关' },
+    { id: 'gamma44',  name: 'Gamma 44Hz', hz: 44 },
+    { id: 'delta',    name: 'Delta', beat: 2 },
+    { id: 'theta',    name: 'Theta', beat: 6 },
+    { id: 'schumann', name: 'Schumann 7.83', beat: 7.83 },
+    { id: 'alpha',    name: 'Alpha', beat: 10 },
+    { id: 'sf174',    name: '174Hz', hz: 174 },
+    { id: 'sf285',    name: '285Hz', hz: 285 },
+    { id: 'sf396',    name: '396Hz', hz: 396 },
+    { id: 'sf417',    name: '417Hz', hz: 417 },
+    { id: 'sf432',    name: '432Hz', hz: 432 },
+    { id: 'sf528',    name: '528Hz', hz: 528 },
+    { id: 'sf639',    name: '639Hz', hz: 639 },
+    { id: 'sf741',    name: '741Hz', hz: 741 },
+    { id: 'sf852',    name: '852Hz', hz: 852 },
+    { id: 'sf963',    name: '963Hz', hz: 963 },
+  ];
 
   function midiToFreq(m) {
     return 440 * Math.pow(2, (m - 69) / 12);
@@ -35,6 +80,16 @@
     this.playing = false;
     this.muted = false;
     this.noteIndex = 0;    // 五声音阶随机游走当前位置
+    // 场景与调制：用户全局选择，localStorage 持久化（默认 密 / Gamma 44Hz）
+    var savedScene = null, savedMod = null;
+    try {
+      savedScene = localStorage.getItem('sutra_scene');
+      savedMod = localStorage.getItem('sutra_mod');
+    } catch (e) {}
+    this._scene = (savedScene && SCENES[savedScene]) ? savedScene : 'dense';
+    this._modId = savedMod || 'gamma44';
+    this._l4nodes = [];
+    this._l4on = false;
   }
 
   MusicEngine.prototype.setConfig = function (cfg) {
@@ -123,13 +178,15 @@
     var self = this;
     function tick() {
       if (!self.playing) return;
-      // 高音只在停笔足够久（条件成立）且非疾书时触发
+      // 高音只在停笔足够久（条件成立）且非疾书时触发；间隔按场景疏密缩放
       if (self._chimeArmed) {
         var t = self.ctx.currentTime + 0.05;
         self._lightChime(t);
         if (Math.random() < 0.2) self._lightChime(t + 2.5 + Math.random() * 3); // 偶尔应和一声
       }
-      self.timers.push(setTimeout(tick, 12000 + Math.random() * 18000));
+      var sc = SCENES[self._scene] || SCENES.dense;
+      var dens = Math.max(0.12, sc.chime || 0);
+      self.timers.push(setTimeout(tick, (12000 + Math.random() * 18000) / dens));
     }
     tick();
   };
@@ -178,7 +235,9 @@
     function tick() {
       if (!self.playing) return;
       if (self._chimeArmed) self._chime(self.ctx.currentTime + 0.05);
-      self.timers.push(setTimeout(tick, 40000 + Math.random() * 60000));
+      var sc = SCENES[self._scene] || SCENES.dense;
+      var dens = Math.max(0.12, sc.chime || 0);
+      self.timers.push(setTimeout(tick, (40000 + Math.random() * 60000) / dens));
     }
     tick();
   };
@@ -248,24 +307,132 @@
     droplet();
   };
 
-  // L4：gamma 脑波层（40Hz 纯正弦，极低音量，全程铺底）
-  MusicEngine.prototype._startGamma = function () {
+  // L3 风层：可调滤波噪声 + 极慢起伏，各场景的风/海/林底噪（参数随场景切换）
+  MusicEngine.prototype._startWind = function () {
     var ctx = this.ctx;
-    var cfg = this.config.gamma || {};
-    if (cfg.off) return;
-    var freq = cfg.hz || 40;
-    var vol = (cfg.vol !== undefined && cfg.vol !== null) ? cfg.vol : 0.015;
-    if (!(vol > 0)) return;
-    var osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.value = freq;
+    var src = ctx.createBufferSource();
+    src.buffer = this._noiseBuf;
+    src.loop = true;
+    src.playbackRate.value = 0.5;
+    var flt = ctx.createBiquadFilter();
+    flt.type = 'bandpass';
+    flt.frequency.value = 800;
+    flt.Q.value = 0.5;
     var g = ctx.createGain();
-    g.gain.value = vol;
-    osc.connect(g);
-    g.connect(this.layers.L4);
-    osc.start();
-    // 缓慢浮现，不打扰入静
-    this.layers.L4.gain.setTargetAtTime(1, ctx.currentTime, 4);
+    g.gain.value = 0; // 初始静音，由场景门控淡入
+    this._windGain = g;
+    this._windFilter = flt;
+    var lfo = ctx.createOscillator();
+    lfo.frequency.value = 0.07;
+    var lg = ctx.createGain();
+    lg.gain.value = 0;
+    this._windLfo = lfo;
+    this._windLfoDepth = lg;
+    lfo.connect(lg);
+    lg.connect(g.gain);
+    src.connect(flt);
+    flt.connect(g);
+    g.connect(this.layers.L3);
+    src.start();
+    lfo.start();
+    this._applyWindParams();
+  };
+
+  // 场景切换时重设风层滤波器参数（不断声，平滑过渡）
+  MusicEngine.prototype._applyWindParams = function () {
+    if (!this.ctx || !this._windFilter) return;
+    var sc = SCENES[this._scene] || SCENES.dense;
+    var w = sc.wind;
+    var t = this.ctx.currentTime;
+    if (!w) {
+      if (this._windLfoDepth) this._windLfoDepth.gain.setTargetAtTime(0, t, 2);
+      return;
+    }
+    try { this._windFilter.type = w.type; } catch (e) {}
+    this._windFilter.frequency.setTargetAtTime(w.freq, t, 2);
+    this._windFilter.Q.setTargetAtTime(w.q, t, 2);
+    if (this._windLfo) this._windLfo.frequency.setTargetAtTime(w.lfo, t, 2);
+    if (this._windLfoDepth) this._windLfoDepth.gain.setTargetAtTime(w.gain * 0.6, t, 2);
+  };
+
+  // L4：调制层（用户自选；默认 Gamma 44Hz 纯正弦极低音量铺底；
+  // 脑波类用双耳搏动实现：载波 180Hz ± 差频/2）
+  MusicEngine.prototype._clearL4 = function () {
+    (this._l4nodes || []).forEach(function (n) {
+      try { n.stop(); } catch (e) {}
+      try { n.disconnect(); } catch (e2) {}
+    });
+    this._l4nodes = [];
+    this._l4on = false;
+  };
+
+  MusicEngine.prototype._startModulation = function () {
+    this._clearL4();
+    if (!this.ctx) return;
+    var sc = SCENES[this._scene] || SCENES.dense;
+    if (sc.silent) return;
+    // 先把总线拉低（0.5s），新声部建好后由 _applyGates 平滑推回，避免切换爆音
+    if (this.layers.L4) this.layers.L4.gain.setTargetAtTime(0, this.ctx.currentTime, 0.5);
+    var mod = null;
+    for (var i = 0; i < MODS.length; i++) {
+      if (MODS[i].id === this._modId) { mod = MODS[i]; break; }
+    }
+    if (!mod || mod.id === 'off') return;
+    var ctx = this.ctx, self = this;
+    this._l4nodes = [];
+    if (mod.beat) {
+      [180 - mod.beat / 2, 180 + mod.beat / 2].forEach(function (f) {
+        var osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = f;
+        var g = ctx.createGain();
+        g.gain.value = 0.012;
+        osc.connect(g);
+        g.connect(self.layers.L4);
+        osc.start();
+        self._l4nodes.push(osc);
+      });
+    } else {
+      var osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = mod.hz;
+      var g = ctx.createGain();
+      g.gain.value = mod.hz < 100 ? 0.015 : 0.02;
+      osc.connect(g);
+      g.connect(self.layers.L4);
+      osc.start();
+      self._l4nodes.push(osc);
+    }
+    this._l4on = true;
+  };
+
+  /* 场景 / 调制：用户全局选择，即时生效并持久化 */
+  MusicEngine.prototype.setScene = function (name) {
+    if (!SCENES[name]) return;
+    this._scene = name;
+    try { localStorage.setItem('sutra_scene', name); } catch (e) {}
+    this._applyWindParams();
+    if (this.playing) { this._startModulation(); this._applyGates(); }
+  };
+
+  MusicEngine.prototype.setModulation = function (id) {
+    var ok = false;
+    for (var i = 0; i < MODS.length; i++) {
+      if (MODS[i].id === id) { ok = true; break; }
+    }
+    if (!ok) return;
+    this._modId = id;
+    try { localStorage.setItem('sutra_mod', id); } catch (e) {}
+    if (this.playing) { this._startModulation(); this._applyGates(); }
+  };
+
+  MusicEngine.prototype.getScene = function () { return this._scene; };
+  MusicEngine.prototype.getModulation = function () { return this._modId; };
+  MusicEngine.getScenes = function () {
+    return SCENE_IDS.map(function (id) { return { id: id, name: SCENES[id].name }; });
+  };
+  MusicEngine.getModulations = function () {
+    return MODS.map(function (m) { return { id: m.id, name: m.name }; });
   };
 
   MusicEngine.prototype.start = function () {
@@ -281,7 +448,8 @@
     this._wantRain = false;      // 细雨条件：连续慢写4字
     this._chimeArmed = false;    // 高音实际可触发 = 条件成立且非疾书
     this._startDrone();
-    this._startGamma();
+    this._startWind();
+    this._startModulation();
     this._startLightChimes();
     this._startPad();
     this._startChime();
@@ -335,24 +503,32 @@
     this._activityTarget = Math.max(0, Math.min(1, a || 0));
   };
 
-  // 综合门控：进度 × 书写状态，每 0.7s 平滑跟随一次
+  // 综合门控：进度 × 书写状态 × 场景，每 0.7s 平滑跟随一次
   MusicEngine.prototype._applyGates = function () {
     if (!this.ctx || !this.playing) return;
     this._activity += (this._activityTarget - this._activity) * 0.3;
     if (Math.abs(this._activityTarget - this._activity) < 0.01) this._activity = this._activityTarget;
     this._nature = 1 - this._activity;
+    var sc = SCENES[this._scene] || SCENES.dense;
+    var silent = !!sc.silent;
     var pg = this._progGates || [1, 1, 0, 1, 1];
     var t = this.ctx.currentTime;
-    this.layers.L0.gain.setTargetAtTime(1, t, 2.5);
-    this.layers.L1.gain.setTargetAtTime(pg[1] * this._nature, t, 2.5);
-    this.layers.L2.gain.setTargetAtTime(pg[2] * (1 - 0.7 * this._activity), t, 2.5);
-    this.layers.L3.gain.setTargetAtTime(pg[3] * this._nature, t, 2.5);
-    this.layers.L4.gain.setTargetAtTime(1, t, 2.5);
-    // 高音实际可触发 = 条件成立且非疾书；泉消/细雨按各自条件淡入淡出（疾书时 L3 总线已静音）
-    this._chimeArmed = this._wantChime && this._nature > 0.45;
-    if (this._springGain) this._springGain.gain.setTargetAtTime(0.016 * (this._wantSpring ? 1 : 0), t, 2.5);
-    if (this._springLfoDepth) this._springLfoDepth.gain.setTargetAtTime(0.008 * (this._wantSpring ? 1 : 0), t, 2.5);
-    if (this._rainGain) this._rainGain.gain.setTargetAtTime(0.010 * (this._wantRain ? 1 : 0), t, 2.5);
+    this.layers.L0.gain.setTargetAtTime(silent ? 0 : sc.drone, t, 2.5);
+    this.layers.L1.gain.setTargetAtTime(silent ? 0 : pg[1] * this._nature * sc.chime, t, 2.5);
+    this.layers.L2.gain.setTargetAtTime(silent ? 0 : pg[2] * (1 - 0.7 * this._activity) * sc.pad, t, 2.5);
+    this.layers.L3.gain.setTargetAtTime(silent ? 0 : pg[3] * this._nature, t, 2.5);
+    this.layers.L4.gain.setTargetAtTime((silent || !this._l4on) ? 0 : 1, t, 2.5);
+    // 高音实际可触发 = 条件成立且非疾书；场景无磬时不触发
+    this._chimeArmed = this._wantChime && this._nature > 0.45 && sc.chime > 0 && !silent;
+    var springT = silent ? 0 : 0.016 * (this._wantSpring ? 1 : 0) * (sc.spring || 0);
+    var rainT = silent ? 0 : 0.010 * (this._wantRain ? 1 : 0) * (sc.rain || 0);
+    if (this._springGain) this._springGain.gain.setTargetAtTime(springT, t, 2.5);
+    if (this._springLfoDepth) this._springLfoDepth.gain.setTargetAtTime(springT * 0.5, t, 2.5);
+    if (this._rainGain) this._rainGain.gain.setTargetAtTime(rainT, t, 2.5);
+    if (this._windGain) {
+      var wg = (silent || !sc.wind) ? 0 : sc.wind.gain * (0.35 + 0.65 * this._nature);
+      this._windGain.gain.setTargetAtTime(wg, t, 2.5);
+    }
   };
 
   /* 核心接口：抄写进度 0~1（L2 和声铺底仍随进度加层；L1/L3 自然声只跟书写状态） */
