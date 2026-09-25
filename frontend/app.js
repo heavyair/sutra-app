@@ -1245,12 +1245,8 @@
     if (pad && !state.completing) pad.newChar(state.chars[state.charIndex]); // 新字体重画虚影
   });
 
-  // 背景音选择面板：场景 + 调制，即时生效并记住选择
+  // 背景音选择面板：背景层 + 纯音层 + 脑波层，各自独立控制，即时生效并记住选择
   function renderMusicChips() {
-    var scenes = MusicEngine.getScenes();
-    var mods = MusicEngine.getModulations();
-    var curScene = music.getScene();
-    var curMod = music.getModulation();
     function chips(el, items, cur, onPick) {
       el.innerHTML = '';
       items.forEach(function (it) {
@@ -1265,8 +1261,17 @@
         el.appendChild(c);
       });
     }
-    chips($('scene-chips'), scenes, curScene, function (id) { music.setScene(id); });
-    chips($('mod-chips'), mods, curMod, function (id) { music.setModulation(id); });
+    chips($('bg-chips'), MusicEngine.getBackgrounds(), music.getBackground(),
+      function (id) { music.setBackground(id); });
+    chips($('tone-chips'), MusicEngine.getToneFreqs(), music.getToneFreq(),
+      function (id) { music.setToneFreq(id); });
+    chips($('brain-chips'), MusicEngine.getBrains(), music.getBrain(),
+      function (id) { music.setBrain(id); });
+    var bv = $('bg-vol'), tv = $('tone-vol');
+    bv.value = music.getBgVolume();
+    tv.value = music.getToneVolume();
+    bv.oninput = function () { music.setBgVolume(parseInt(bv.value, 10)); };
+    tv.oninput = function () { music.setToneVolume(parseInt(tv.value, 10)); };
   }
   $('btn-music-done').addEventListener('click', function () {
     $('music-overlay').classList.add('hidden');

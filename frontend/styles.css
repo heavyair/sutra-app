@@ -137,6 +137,13 @@ button:active { transform: scale(0.97); }
   border-color: var(--gold); color: var(--gold);
   background: #33291a;
 }
+/* 背景音：音量滑杆 */
+.vol-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 20px; margin-bottom: 18px;
+}
+.vol-row span { font-size: 14px; color: var(--ink-dim); white-space: nowrap; }
+.vol-row input[type="range"] { flex: 1; accent-color: var(--gold); }
 .picker-foot { padding: 20px; }
 .picker-foot .btn-secondary { width: 100%; margin-top: 10px; }
 
