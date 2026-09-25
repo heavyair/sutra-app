@@ -232,6 +232,9 @@
     if (id === 'screen-work') {
       return workScreenTools();
     }
+    if (id === 'screen-char') {
+      return []; // 单字屏用自己的悬浮按钮（☰/🧽/▶），不走全局
+    }
     if (id === 'screen-dedications') {
       return [{ label: '经文库', onClick: function () { showScreen('screen-library'); } }];
     }
@@ -1669,7 +1672,7 @@
       state.workviewDual = createDualView($('workview-dual'), {
         onTap: function (pos) {
           var cw = state.workData && state.workData.work;
-          if (cw && !cw.dedicated_at) openReplay(pos);
+          if (cw && !cw.dedicated_at) openChar(pos);
         },
         isBurned: function () { return false; }
       });
@@ -2168,54 +2171,79 @@
     };
   }
 
-  var replayPad = null;
-  var replayPos = -1;
-  var replayCh = '';
-  var replaySaved = null;
-  var replayCancel = null;   // 当前单字演绎的取消函数
-  var replayEditMode = false; // true=毛笔/橡皮改写中（可落笔），false=纯回放（禁落笔）
+  /* ---------- 单字欣赏：全屏，界面同首次书写该字 ---------- */
+  var charPad = null;
+  var charPos = -1;          // 全文序号
+  var charSaved = null;      // 已保存版本
+  var charEditing = false;   // 改写中（可落笔）
+  var charReplayCancel = null;
+  var charSaveTimer = 0;
+  var charQueue = [];        // 已写字序号（升序）
+
+  function charCh() { return ((state.fullChars || state.chars || [])[charPos]) || ''; }
 
   // 单字是否可改写：未回向，且（会话内作者本人 / owner / writer）
-  function replayCanRewrite() {
+  function charCanRewrite() {
     var w = (state.workData && state.workData.work) || {};
     if (w.dedicated_at) return false;
     if (state.workViewLocal) return true;
     return w.role === 'owner' || w.role === 'writer';
   }
 
-  function setReplayEditMode(on) {
-    replayEditMode = on;
-    var stage = $('replay-stage');
-    if (stage) stage.classList.toggle('no-input', !on); // 回放态禁落笔，改写态可落笔
-    var bb = $('btn-replay-brush'); if (bb) bb.classList.toggle('active', on);
-    var bs = $('btn-replay-save'); if (bs) bs.classList.toggle('hidden', !on);
-    if (on && replayPad) replayPad.setPen('maobi');
-  }
-
-  function openReplay(pos) {
+  function openChar(pos) {
     var saved = (state.workCharsByPos || {})[pos];
     if (!saved) return;
-    replayPos = pos;
-    replaySaved = saved;
-    replayCh = ((state.fullChars || state.chars || [])[pos]) || '';
-    $('replay-label').textContent = '第 ' + (pos + 1) + ' 字 · ' + replayCh;
-    $('replay-tools').classList.toggle('hidden', !replayCanRewrite());
-    $('replay-overlay').classList.remove('hidden');
-    // 舞台按该字书写时的宽高比定尺寸（与放映同算法），避免固定 3/4 框拉伸变形
-    var ar = ((saved.strokes || {}).ar) || (window.innerWidth / window.innerHeight) || 0.5;
-    sizePlayStage($('replay-stage'), ar, Math.min(window.innerWidth * 0.9, 380), window.innerHeight * 0.55);
-    if (!replayPad) replayPad = new WritingPad($('replay-paper'), $('replay-ink'), {});
-    else replayPad._resize();
-    replayAgain();
+    charPos = pos; charSaved = saved;
+    var byPos = state.workCharsByPos || {};
+    var full = state.fullChars || state.chars || [];
+    charQueue = [];
+    for (var i = 0; i < full.length; i++) if (byPos[i]) charQueue.push(i);
+    showScreen('screen-char');
+    if (!charPad) {
+      charPad = new WritingPad($('char-paper'), $('char-ink'), {
+        onStrokeStart: function () { clearTimeout(charSaveTimer); },
+        onStrokeEnd: function (cov, n) {
+          if (!charEditing) return;
+          // 最小运笔：超过字区最大边的一半（防误触）
+          var minLen = charPad.bbox ? Math.max(charPad.bbox.w, charPad.bbox.h) * 0.5 : 60;
+          if (cov >= DONE_COVERAGE && charPad.inkLength > minLen) {
+            clearTimeout(charSaveTimer);
+            charSaveTimer = setTimeout(function () {
+              if (charEditing && charPad.coverage() >= DONE_COVERAGE) saveCharRewrite();
+            }, 900);
+          }
+        }
+      });
+    } else {
+      charPad._resize();
+    }
+    $('btn-char-eraser').style.display = charCanRewrite() ? '' : 'none';
+    charShow();
   }
 
-  // 再播一次：按已保存版本演绎（改写保存后播的是新版）
-  function replayAgain() {
-    if (replayCancel) { replayCancel(); replayCancel = null; }
-    setReplayEditMode(false);
-    var ch = replayCh, saved = replaySaved;
+  function charShow() {
+    var qi = charQueue.indexOf(charPos);
+    $('char-title').textContent = '第 ' + (charPos + 1) + ' 字 · ' + charCh();
+    $('char-prev').style.visibility = qi > 0 ? '' : 'hidden';
+    $('char-next').style.visibility = (qi >= 0 && qi < charQueue.length - 1) ? '' : 'hidden';
+    closeCharMenu();
+    charReplay();
+  }
+
+  function charSetEditing(on) {
+    charEditing = on;
+    $('screen-char').classList.toggle('no-input', !on); // 回放态禁落笔，改写态可落笔
+    if (on && charPad) charPad.setPen('maobi');
+  }
+
+  // 打开默认重播一次笔迹（与放映同一套实现）
+  function charReplay() {
+    if (charReplayCancel) { charReplayCancel(); charReplayCancel = null; }
+    clearTimeout(charSaveTimer);
+    charSetEditing(false);
+    var ch = charCh(), saved = charSaved;
     var doPlay = function () {
-      replayCancel = playOneChar(replayPad, ch, saved, function () { replayCancel = null; });
+      charReplayCancel = playOneChar(charPad, ch, saved, function () { charReplayCancel = null; });
     };
     try {
       var fam = state.font.web ? state.font.web.split(' ').slice(1).join(' ') : null;
@@ -2224,69 +2252,124 @@
     } catch (e) { doPlay(); }
   }
 
-  // 保存改写：更新本地字迹表 + 服务端 + 会话快照 + 格子
-  function saveReplayRewrite() {
-    if (replayPos < 0 || !replayPad) return;
-    var rec = replayPad.getCharRecord();
-    var entry = { pos: replayPos, ch: replayCh, pen: rec.pen || 'maobi', strokes: rec };
-    state.workCharsByPos[replayPos] = entry;
-    replaySaved = entry;
+  // 左右滑动 / 点‹ ›：上一个 / 下一个已写的字
+  function charGo(dir) {
+    var qi = charQueue.indexOf(charPos) + dir;
+    if (qi < 0 || qi >= charQueue.length) return;
+    charPos = charQueue[qi];
+    charSaved = (state.workCharsByPos || {})[charPos];
+    if (!charSaved) return;
+    charShow();
+  }
+
+  // 橡皮：擦除重写（进改写态即一张干净纸，虚影字引导）
+  function charEnterEdit() {
+    if (!charPad || charPos < 0 || !charCanRewrite()) return;
+    if (charReplayCancel) { charReplayCancel(); charReplayCancel = null; }
+    clearTimeout(charSaveTimer);
+    charPad.newChar(charCh()); // 清空墨迹、重置落笔记录与计时、重画虚影字
+    charSetEditing(true);
+  }
+
+  // 改写完成后自动保存（写字屏同款覆盖判定），存下即播新版
+  function saveCharRewrite() {
+    if (charPos < 0 || !charPad || !charEditing) return;
+    charEditing = false;
+    var rec = charPad.getCharRecord();
+    var entry = { pos: charPos, ch: charCh(), pen: rec.pen || 'maobi', strokes: rec };
+    state.workCharsByPos[charPos] = entry;
+    charSaved = entry;
     var w = (state.workData && state.workData.work) || {};
     if (w.id) {
       api('/api/works/' + w.id + '/chars', {
         method: 'PUT',
-        body: JSON.stringify({ pos: replayPos, ch: replayCh, pen: entry.pen, strokes: rec })
+        body: JSON.stringify({ pos: charPos, ch: entry.ch, pen: entry.pen, strokes: rec })
       }).catch(function () {});
     }
-    // 会话快照（PDF 用）：按 sessionStartPos 换位
     if (state.workImages && state.workImages.length) {
-      var si = replayPos - (state.sessionStartPos || 0);
+      var si = charPos - (state.sessionStartPos || 0);
       var img = null;
-      try { img = replayPad.snapshot(); } catch (e) {}
+      try { img = charPad.snapshot(); } catch (e) {}
       if (img && si >= 0 && si < state.workImages.length) state.workImages[si] = img;
     }
     refreshWorkCells();
-    replayAgain(); // 回到回放态，播新版
+    charToast('已保存');
+    charReplay();
   }
 
-  // 改写单字后刷新作品双视图的格子（不清音频、不动菜单，保持当前视图与页码）
-  function refreshWorkCells() {
-    if (!state.workviewDual) return;
-    var full = state.fullChars || state.chars || [];
-    var byPos = state.workCharsByPos || {};
-    var cells = [];
-    for (var i = 0; i < full.length; i++) {
-      var saved = byPos[i];
-      if (saved) cells.push({ pos: i, ch: saved.ch || full[i], saved: saved });
+  function charBack() {
+    if (charReplayCancel) { charReplayCancel(); charReplayCancel = null; }
+    clearTimeout(charSaveTimer);
+    closeCharMenu();
+    charPos = -1; charSaved = null; charEditing = false;
+    showScreen('screen-work');
+  }
+
+  var charToastTimer = 0;
+  function charToast(msg) {
+    var t = $('char-toast');
+    t.textContent = msg;
+    t.classList.remove('hidden');
+    t.style.opacity = '1';
+    clearTimeout(charToastTimer);
+    charToastTimer = setTimeout(function () {
+      t.style.opacity = '0';
+      setTimeout(function () { t.classList.add('hidden'); }, 350);
+    }, 1200);
+  }
+
+  function closeCharMenu() {
+    var m = $('char-menu');
+    if (!m || m.classList.contains('hidden')) return;
+    m.classList.remove('open');
+    setTimeout(function () { m.classList.add('hidden'); }, 320);
+  }
+  $('btn-char-tools').addEventListener('click', function (e) {
+    e.stopPropagation();
+    var m = $('char-menu');
+    if (m.classList.contains('hidden')) {
+      m.classList.remove('hidden');
+      requestAnimationFrame(function () { m.classList.add('open'); });
+    } else {
+      closeCharMenu();
     }
-    var dual = state.workviewDual;
-    var v = dual.view, pi = dual.pagerIdx, si = dual.sheetIdx;
-    dual.render(cells, full.length, state.workviewTitle || '');
-    dual.pagerIdx = pi; dual.sheetIdx = si;
-    dual.switch(v);
-  }
-
-  function closeReplay() {
-    if (replayCancel) { replayCancel(); replayCancel = null; }
-    $('replay-overlay').classList.add('hidden');
-    replayPos = -1; replaySaved = null;
-    setReplayEditMode(false);
-  }
-  $('btn-replay-close').addEventListener('click', closeReplay);
-  $('btn-replay-again').addEventListener('click', function () {
-    if (replayPos >= 0) replayAgain();
   });
-  // 单字改写工具：毛笔（重写）/ 橡皮（擦除重写）/ 保存
-  // 进改写态即一张干净纸（虚影字引导），与写字屏"橡皮清空重写"一致，保证存下的记录就是看到的
-  function enterReplayEdit() {
-    if (!replayPad || replayPos < 0) return;
-    if (replayCancel) { replayCancel(); replayCancel = null; }
-    replayPad.newChar(replayCh); // 清空墨迹、重置落笔记录与计时、重画虚影字
-    setReplayEditMode(true);
-  }
-  $('btn-replay-brush').addEventListener('click', enterReplayEdit);
-  $('btn-replay-eraser').addEventListener('click', enterReplayEdit);
-  $('btn-replay-save').addEventListener('click', saveReplayRewrite);
+  $('char-menu').addEventListener('click', function (e) {
+    var t = e.target && e.target.dataset ? e.target.dataset.ctool : null;
+    closeCharMenu();
+    if (t === 'back') charBack();
+  });
+  $('btn-char-eraser').addEventListener('click', function (e) {
+    e.stopPropagation();
+    charEnterEdit();
+  });
+  $('btn-char-play').addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (charPos >= 0) charReplay(); // 重播已保存版本（改写中点=放弃未保存的）
+  });
+  $('char-prev').addEventListener('click', function () { charGo(-1); });
+  $('char-next').addEventListener('click', function () { charGo(1); });
+  // 菜单打开时点别处收起（capture，先于滑动判定）
+  $('screen-char').addEventListener('pointerdown', function (e) {
+    var m = $('char-menu');
+    if (!m.classList.contains('hidden') && !e.target.classList.contains('tool-item')) {
+      closeCharMenu();
+    }
+  }, true);
+  // 回放态左右滑动：上一个 / 下一个字（改写态的滑动是运笔，不触发）
+  var charSwipe = null;
+  $('screen-char').addEventListener('pointerdown', function (e) {
+    charSwipe = { x: e.clientX, y: e.clientY, t: Date.now() };
+  });
+  $('screen-char').addEventListener('pointerup', function (e) {
+    if (!charSwipe) return;
+    var s = charSwipe; charSwipe = null;
+    if (charEditing) return;
+    var dx = e.clientX - s.x, dy = e.clientY - s.y, dt = Date.now() - s.t;
+    if (dt < 600 && Math.abs(dx) > 90 && Math.abs(dx) > Math.abs(dy) * 2) {
+      charGo(dx < 0 ? 1 : -1);
+    }
+  });
 
   /* ---------- 落笔放映：整部作品按原节奏依次重演 ---------- */
   var inkplayPad = null, inkplayActive = false, inkplayLiveMusic = false, inkplayCancel = null;

@@ -289,13 +289,35 @@ button:active { transform: scale(0.97); }
 .workview-actions { display: flex; gap: 10px; margin: 12px 0; }
 /* 作品查看已改欣赏式纸卡（.work-char），旧字格样式移除 */
 
-.replay-card { width: min(92vw, 420px); }
-.replay-stage { position: relative; width: 100%; aspect-ratio: 3/4; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--paper); margin: 0 auto; }
-.replay-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-.replay-stage.no-input #replay-ink { pointer-events: none; } /* 回放态禁落笔 */
-.replay-tools { display: flex; gap: 8px; justify-content: center; align-items: center; margin: 10px 0 2px; flex-wrap: wrap; }
-.tool-chip { border: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 999px; padding: 6px 14px; font-size: 13px; }
-.tool-chip.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+/* 单字欣赏：全屏，界面同首次书写 */
+#screen-char {
+  position: fixed; inset: 0; z-index: 50;
+  padding: 0; min-height: 100dvh; background: var(--paper);
+}
+#char-paper, #char-ink {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  touch-action: none;
+}
+#char-paper { z-index: 1; }
+#char-ink { z-index: 2; }
+#screen-char.no-input #char-ink { pointer-events: none; } /* 回放态禁落笔 */
+#char-label {
+  position: absolute; top: calc(10px + env(safe-area-inset-top)); left: 0; right: 0; z-index: 3;
+  text-align: center; color: var(--ink-dim); font-size: 13px; letter-spacing: 2px;
+  pointer-events: none;
+}
+#char-label .char-nav { pointer-events: auto; padding: 6px 18px; font-size: 20px; color: var(--ink-dim); }
+#char-ui {
+  position: absolute; z-index: 4;
+  left: calc(18px + env(safe-area-inset-left)); bottom: calc(24px + env(safe-area-inset-bottom));
+  display: flex; gap: 12px;
+}
+.char-toast {
+  position: absolute; z-index: 5; left: 50%; bottom: 110px; transform: translateX(-50%);
+  background: rgba(26,22,17,.85); color: var(--gold); font-size: 13px; letter-spacing: 2px;
+  padding: 8px 18px; border-radius: 999px; border: 1px solid var(--gold-deep);
+  transition: opacity .3s;
+}
 
 /* 完成后去向选择 */
 .farewell-block { margin: 4px 0 8px; padding: 10px 0 2px; border-top: 1px solid var(--line); }

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1a1611">
 <title>抄经 · 静心</title>
-<link rel="stylesheet" href="styles.css?v=49">
+<link rel="stylesheet" href="styles.css?v=50">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@600&display=swap">
 </head>
@@ -158,25 +158,21 @@
 <button id="global-tools" class="fab" style="display:none" aria-label="工具">☰</button>
 <div id="global-menu" class="tools-menu hidden"></div>
 
-<!-- 回放弹窗：重演一字的落笔过程 -->
-<div id="replay-overlay" class="picker-overlay hidden">
-  <div class="picker-card replay-card">
-    <h3 id="replay-label"></h3>
-    <div id="replay-stage" class="replay-stage no-input">
-      <canvas id="replay-paper"></canvas>
-      <canvas id="replay-ink"></canvas>
+  <!-- 单字欣赏：全屏，界面同首次书写该字 -->
+  <section id="screen-char" class="screen">
+    <canvas id="char-paper"></canvas>
+    <canvas id="char-ink"></canvas>
+    <div id="char-label"><span id="char-prev" class="char-nav">‹</span><span id="char-title"></span><span id="char-next" class="char-nav">›</span></div>
+    <div id="char-ui">
+      <button id="btn-char-tools" class="fab" aria-label="工具">☰</button>
+      <button id="btn-char-eraser" class="fab" aria-label="橡皮擦">🧽</button>
+      <button id="btn-char-play" class="fab" aria-label="重播">▶</button>
     </div>
-    <div id="replay-tools" class="replay-tools hidden">
-      <button id="btn-replay-brush" class="tool-chip">✒️ 毛笔</button>
-      <button id="btn-replay-eraser" class="tool-chip">🧽 橡皮</button>
-      <button id="btn-replay-save" class="btn-primary hidden">保存改写</button>
+    <div id="char-menu" class="tools-menu hidden">
+      <button class="tool-item" data-ctool="back">返回</button>
     </div>
-    <div class="done-actions">
-      <button id="btn-replay-again" class="btn-secondary">再播一次</button>
-      <button id="btn-replay-close" class="btn-primary">关闭</button>
-    </div>
-  </div>
-</div>
+    <div id="char-toast" class="char-toast hidden"></div>
+  </section>
 
 <!-- 落笔放映：整部作品按原节奏依次重演，如有人在眼前落笔 -->
 <div id="inkplay-overlay" class="picker-overlay hidden">
@@ -239,8 +235,8 @@
 <!-- 打印专用：屏幕上隐藏，打印时显示 -->
 <div id="print-sheet"></div>
 
-<script src="music.js?v=49"></script>
-<script src="writing.js?v=49"></script>
-<script src="app.js?v=49"></script>
+<script src="music.js?v=50"></script>
+<script src="writing.js?v=50"></script>
+<script src="app.js?v=50"></script>
 </body>
 </html>
