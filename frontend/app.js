@@ -1561,22 +1561,23 @@
   }
 
   // 整纸字格：通用格（全部字形边框的最大者，正方形，同一比例，透明底，无格线）；
-  // 先量所有字再统一渲染，按 pos+笔画对象+通用格尺寸缓存
+  // 先量所有字再统一渲染，按 pos+笔画对象+通用格尺寸缓存。返回 data-URL 字符串。
   var _sheetCropCache = { key: '', map: {} };
-  function sheetCellImg(it, side) {
+  function sheetCellSrc(it, side) {
     var wk = (state.work && state.work.id) ? 'w' + state.work.id : 'sess';
     var fs = (state.font && state.font.stack) || '';
     var skey = wk + '|' + fs.length + '|' + Math.round(side);
     if (_sheetCropCache.key !== skey) _sheetCropCache = { key: skey, map: {} };
     var rec = (it.saved && it.saved.strokes) || {};
     var e = _sheetCropCache.map[it.pos];
+    if (e && e.rec === rec && e.fs === fs && e.trail === it.trail) return e.src;
+    var src = WritingPad.renderSheetCell(rec, it.ch, fs, side, it.box, it.trail);
+    _sheetCropCache.map[it.pos] = { rec: rec, fs: fs, trail: it.trail, src: src };
+    return src;
+  }
+  function sheetCellImg(it, side) {
     var img = document.createElement('img');
-    if (e && e.rec === rec && e.fs === fs && e.trail === it.trail) { img.src = e.src; }
-    else {
-      var src = WritingPad.renderSheetCell(rec, it.ch, fs, side, it.box, it.trail);
-      _sheetCropCache.map[it.pos] = { rec: rec, fs: fs, trail: it.trail, src: src };
-      img.src = src;
-    }
+    img.src = sheetCellSrc(it, side);
     img.alt = it.ch || '';
     return img;
   }
@@ -1793,7 +1794,8 @@
     var imgs = [];
     lay.items.forEach(function (it) {
       if (it.ash) return;
-      imgs.push(sheetCellImg(it, lay.side));
+      var src = sheetCellSrc(it, lay.side); // data-URL 字符串（buildPrintSheet 按字符串拼接）
+      if (src) imgs.push(src);
     });
     return imgs;
   }
