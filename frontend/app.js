@@ -2319,6 +2319,21 @@
   }
 
   // 改写完成后自动保存（写字屏同款覆盖判定），存下即播新版
+  // 单字改写保存后：立即刷新作品双视图（逐字/整纸），回去就能看到新字
+  function refreshWorkCells() {
+    var dual = state.workviewDual;
+    if (!dual) return;
+    var entry = (state.workCharsByPos || {})[charPos];
+    if (!entry) return;
+    var cells = dual.cells || [], idx = -1;
+    for (var i = 0; i < cells.length; i++) {
+      if (cells[i].pos === charPos) { cells[i].saved = entry; idx = i; break; }
+    }
+    if (_sheetCropCache.map) delete _sheetCropCache.map[charPos]; // 整纸该格缓存失效
+    dual.render(cells, dual.total, dual.title);
+    if (idx >= 0 && dual.view === 'char') dual.goTo(idx); // 逐字：滚回刚改的字
+  }
+
   function saveCharRewrite() {
     if (charPos < 0 || !charPad || !charEditing) return;
     charEditing = false;
