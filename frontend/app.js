@@ -1286,7 +1286,7 @@
     });
   }
 
-  // 背景音面板：背景层 + 纯音层 + 脑波层，各自独立控制，即时生效并记住选择
+  // 背景音面板：第一版设计——9 场景 + 16 调制（含 Gamma 44Hz 选项），即时生效并记住选择
   function renderMusicPanel(body) {
     function section(label) {
       var el = document.createElement('div');
@@ -1309,29 +1309,11 @@
         el.appendChild(c);
       });
       body.appendChild(el);
-      return el;
     }
-    function volRow(get, set) {
-      var row = document.createElement('div');
-      row.className = 'vol-row';
-      var lab = document.createElement('span');
-      lab.textContent = '音量';
-      var input = document.createElement('input');
-      input.type = 'range'; input.min = '0'; input.max = '100'; input.step = '1';
-      input.value = get();
-      input.addEventListener('input', function () { set(parseInt(input.value, 10)); });
-      row.appendChild(lab);
-      row.appendChild(input);
-      body.appendChild(row);
-    }
-    section('背景');
-    chips(MusicEngine.getBackgrounds(), music.getBackground(), function (id) { music.setBackground(id); });
-    volRow(function () { return music.getBgVolume(); }, function (v) { music.setBgVolume(v); });
-    section('纯音');
-    chips(MusicEngine.getToneFreqs(), music.getToneFreq(), function (id) { music.setToneFreq(id); });
-    volRow(function () { return music.getToneVolume(); }, function (v) { music.setToneVolume(v); });
-    section('脑波（可选）');
-    chips(MusicEngine.getBrains(), music.getBrain(), function (id) { music.setBrain(id); });
+    section('场景');
+    chips(MusicEngine.getScenes(), music.getScene(), function (id) { music.setScene(id); });
+    section('调制（可选）');
+    chips(MusicEngine.getModulations(), music.getModulation(), function (id) { music.setModulation(id); });
   }
 
   function hideOverlays() {
