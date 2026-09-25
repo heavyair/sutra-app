@@ -115,6 +115,7 @@ def init_db():
         ("source", "TEXT DEFAULT 'seed'"),
         ("created_at", "TEXT"),
         ("size_bytes", "INTEGER DEFAULT 0"),
+        ("deleted", "INTEGER DEFAULT 0"),
     ]:
         if col not in cols:
             conn.execute(f"ALTER TABLE sutras ADD COLUMN {col} {ddl}")
@@ -611,7 +612,8 @@ def sutra_list():
         "        AND w.dedicated_at IS NOT NULL"
         "        AND w.dedication_expires_at > datetime('now')) AS dedication_count"
         " FROM sutras s"
-        " WHERE s.user_id IS NULL OR s.visibility = 'public' OR s.user_id = ?"
+        " WHERE (s.user_id IS NULL OR s.visibility = 'public' OR s.user_id = ?)"
+        " AND COALESCE(s.deleted, 0) = 0"
         " ORDER BY s.tradition, s.title",
         (uid, uid),
     ).fetchall()
@@ -709,7 +711,7 @@ def sutra_patch(sutra_id):
 
 @app.route("/api/sutra/<sutra_id>", methods=["DELETE"])
 def sutra_delete(sutra_id):
-    """上传者删除自己的经书（已有抄经作品时不允许）。"""
+    """上传者删除自己的经书（软删除：从经文库隐藏，已有抄经作品不受影响，可照常打开/续写）。"""
     user, err = require_user()
     if err:
         return err
@@ -720,12 +722,7 @@ def sutra_delete(sutra_id):
     if not row or row["source"] != "upload" or row["user_id"] != user["id"]:
         conn.close()
         return jsonify({"ok": False, "message": "只能删除自己上传的经书"}), 403
-    w = conn.execute("SELECT COUNT(*) AS c FROM works WHERE sutra_id = ?", (sutra_id,)).fetchone()
-    if w["c"]:
-        conn.close()
-        return jsonify({"ok": False, "message": "这部经已有抄经作品，请先删除作品"}), 400
-    conn.execute("DELETE FROM likes WHERE sutra_id = ?", (sutra_id,))
-    conn.execute("DELETE FROM sutras WHERE id = ?", (sutra_id,))
+    conn.execute("UPDATE sutras SET deleted = 1 WHERE id = ?", (sutra_id,))
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
@@ -1153,6 +1150,28 @@ def work_delete(wid):
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
+
+
+@app.route("/api/works/<int:wid>", methods=["PATCH"])
+def work_patch(wid):
+    """作者切换作品公开/私有（私有作品设为公开后，大家可在画廊看到）。"""
+    conn = get_db()
+    w = conn.execute("SELECT * FROM works WHERE id = ?", (wid,)).fetchone()
+    if not w or _work_role(w, current_user()) != "owner":
+        conn.close()
+        return jsonify({"ok": False, "message": "无权操作"}), 403
+    data = request.get_json(silent=True) or {}
+    if "is_public" not in data:
+        conn.close()
+        return jsonify({"ok": False, "message": "缺少 is_public"}), 400
+    is_public = 1 if data["is_public"] else 0
+    conn.execute(
+        "UPDATE works SET is_public = ?, updated_at = datetime('now') WHERE id = ?",
+        (is_public, wid),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "is_public": bool(is_public)})
 
 
 @app.route("/api/works/<int:wid>/complete", methods=["POST"])

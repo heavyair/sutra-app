@@ -635,7 +635,7 @@
     });
   }
   function deleteSutra(id, title) {
-    if (!confirm('确定删除《' + title + '》吗？删除后不可恢复。')) return;
+    if (!confirm('确定删除《' + title + '》吗？它将从经文库移除，但已有抄经作品不受影响，可照常查看和续写。')) return;
     api('/api/sutra/' + encodeURIComponent(id), { method: 'DELETE' }).then(function (res) {
       if (!res || !res.ok) { alert((res && res.message) || '删除失败'); return; }
       loadLibrary();
@@ -1769,14 +1769,14 @@
     var dedicated = !!w.dedicated_at;
     var finished = w.chars_done >= w.chars_total && w.chars_total > 0;
     var isOwner = w.role === 'owner';
-    var canDedicate = w.can_dedicate && !dedicated && w.chars_done > 0;
-    var items = [];
+    var canDedicate = w.can_dedicate && !dedicated && w.chars_done > 0;    var items = [];
     if (!dedicated && !finished) items.push({ label: '续写', onClick: continueWork });
     if (!dedicated && w.chars_done > 0) {
       items.push({ label: '放映', onClick: openInkPlay });
       items.push({ label: 'PDF', onClick: printWork });
     }
     if (isOwner && getToken()) items.push({ label: '分享', onClick: shareViewedWork });
+    if (isOwner && !dedicated) items.push({ label: w.is_public ? '设为私有' : '设为公开', onClick: toggleWorkPublic });
     if (canDedicate) items.push({ label: '回向', onClick: openDedicateDialog });
     if (isOwner) items.push({ label: '删除', onClick: deleteWork });
     return items;
@@ -1909,6 +1909,22 @@
     api('/api/works/' + w.id, { method: 'DELETE' }).then(function (res) {
       if (res && res.ok) showScreen('screen-library');
       else alert('删除失败');
+    });
+  }
+
+  // 作者切换作品公开/私有
+  function toggleWorkPublic() {
+    var w = state.workData && state.workData.work;
+    if (!w) return;
+    var toPublic = !w.is_public;
+    api('/api/works/' + w.id, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_public: toPublic })
+    }).then(function (res) {
+      if (!res || !res.ok) { alert((res && res.message) || '操作失败'); return; }
+      w.is_public = toPublic;
+      setScreenTools(workScreenTools());
+      alert(toPublic ? '已设为公开，大家可以在画廊看到' : '已设为私有，仅自己和分享链接可看');
     });
   }
 

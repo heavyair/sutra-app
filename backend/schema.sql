@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS sutras (
   visibility  TEXT DEFAULT 'public', -- public | private（仅上传者可见）
   source      TEXT DEFAULT 'seed',   -- seed | upload
   created_at  TEXT DEFAULT (datetime('now')),
-  size_bytes  INTEGER DEFAULT 0  -- full_text 字节数（配额用）
+  size_bytes  INTEGER DEFAULT 0,  -- full_text 字节数（配额用）
+  deleted     INTEGER DEFAULT 0  -- 软删除：从经文库隐藏，已有抄经作品不受影响
 );
 
 -- likes: 点赞记录（同一用户对同一经文只记一次）
