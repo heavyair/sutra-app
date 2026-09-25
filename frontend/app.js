@@ -1281,24 +1281,47 @@
   }
   function ashImg() { var img = document.createElement('img'); img.src = randomAsh(); return img; }
 
+  // 整纸 / PDF 共用布局：通用格（全部字形边框的最大者）+ 每格的尾随标点。
+  // 标点不占格：跳过标点格，标点贴在上一个字格右下角（须是紧邻的下一个序号）。
+  function sheetLayout(cells, fontStack, isBurned) {
+    var items = [];
+    var boxByK = {}, side = 0;
+    for (var k = 0; k < cells.length; k++) {
+      var c = cells[k];
+      if (c.ash || (isBurned && isBurned(c.pos))) { items.push({ pos: c.pos, ash: true }); continue; }
+      if (isPunct(c.ch)) continue;
+      var saved = c.saved; if (!saved) continue;
+      var ar = (saved.strokes && saved.strokes.ar) || null;
+      var bk = c.ch + '|' + (ar || '');
+      var b = boxByK[bk] || (boxByK[bk] = WritingPad.glyphBox(c.ch, fontStack, ar));
+      if (b.bw > side) side = b.bw;
+      if (b.bh > side) side = b.bh;
+      var trail = null, nx = cells[k + 1];
+      if (nx && !nx.ash && nx.pos === c.pos + 1 && isPunct(nx.ch) && nx.saved) trail = nx.ch;
+      items.push({ pos: c.pos, ch: c.ch, saved: saved, box: b, trail: trail });
+    }
+    side = side * 1.5 || 200; // 四周各留 25%
+    return { items: items, side: side };
+  }
+
   // 整纸字格：通用格（全部字形边框的最大者，正方形，同一比例，透明底，无格线）；
   // 先量所有字再统一渲染，按 pos+笔画对象+通用格尺寸缓存
   var _sheetCropCache = { key: '', map: {} };
-  function sheetCellImg(c, side, box) {
+  function sheetCellImg(it, side) {
     var wk = (state.work && state.work.id) ? 'w' + state.work.id : 'sess';
     var fs = (state.font && state.font.stack) || '';
     var skey = wk + '|' + fs.length + '|' + Math.round(side);
     if (_sheetCropCache.key !== skey) _sheetCropCache = { key: skey, map: {} };
-    var rec = (c.saved && c.saved.strokes) || {};
-    var e = _sheetCropCache.map[c.pos];
+    var rec = (it.saved && it.saved.strokes) || {};
+    var e = _sheetCropCache.map[it.pos];
     var img = document.createElement('img');
-    if (e && e.rec === rec && e.fs === fs) { img.src = e.src; }
+    if (e && e.rec === rec && e.fs === fs && e.trail === it.trail) { img.src = e.src; }
     else {
-      var src = WritingPad.renderSheetCell(rec, c.ch, fs, side, box);
-      _sheetCropCache.map[c.pos] = { rec: rec, fs: fs, src: src };
+      var src = WritingPad.renderSheetCell(rec, it.ch, fs, side, it.box, it.trail);
+      _sheetCropCache.map[it.pos] = { rec: rec, fs: fs, trail: it.trail, src: src };
       img.src = src;
     }
-    img.alt = c.ch || '';
+    img.alt = it.ch || '';
     return img;
   }
 
@@ -1355,10 +1378,12 @@
     return img;
   }
 
-  // 逐字：一列大纸卡，上下滚动浏览，点卡回放落笔（无按钮，翻页靠滚动）
+  // 逐字：一列大纸卡，上下滚动浏览，点卡回放落笔（无按钮，翻页靠滚动）；标点跳过不展卡
   function renderPager(box, api, ctx) {
     box.innerHTML = ''; api.cardByPos = {};
-    var cells = api.cells;
+    var cells = (api.cells || []).filter(function (c) {
+      return c.ash || (ctx.isBurned && ctx.isBurned(c.pos)) || !isPunct(c.ch);
+    });
     if (!cells.length) {
       box.innerHTML = '<div class="work-empty">还没有写完的字，回去继续吧。</div>';
       return;
@@ -1421,29 +1446,21 @@
       now.getFullYear() + '-' + (now.getMonth() + 1) + '-' + now.getDate();
     sheet.appendChild(metaEl);
     var grid = mkEl('div', 'sheet-grid');
-    // 通用格：量出所有字形的边框，取最大者为格（正方形，四周留 25%），各字以包围盒中心为锚居中
     var fontStack = (state.font && state.font.stack) || '';
-    var boxByCh = {}, boxes = {}, side = 0;
-    cells.forEach(function (c) {
-      if (c.ash || (ctx.isBurned && ctx.isBurned(c.pos))) return;
-      var ar = (c.saved && c.saved.strokes && c.saved.strokes.ar) || null;
-      var bk = c.ch + '|' + (ar || '');
-      var b = boxByCh[bk] || (boxByCh[bk] = WritingPad.glyphBox(c.ch, fontStack, ar));
-      boxes[c.pos] = b;
-      if (b.bw > side) side = b.bw;
-      if (b.bh > side) side = b.bh;
-    });
-    side = side * 1.5 || 200; // 四周各留 25%（边长 ×1.5）
-    cells.forEach(function (c) {
+    var lay = sheetLayout(cells, fontStack, ctx.isBurned);
+    lay.items.forEach(function (it) {
       var d = mkEl('div', 'sheet-cell');
-      var burned = c.ash || (ctx.isBurned && ctx.isBurned(c.pos));
-      d.appendChild(burned ? ashImg() : sheetCellImg(c, side, boxes[c.pos]));
-      if (burned) d.classList.add('burned');
-      if (ctx.onTap) {
-        d.style.cursor = 'pointer';
-        (function (pos) { d.addEventListener('click', function () { ctx.onTap(pos); }); })(c.pos);
+      if (it.ash) {
+        d.appendChild(ashImg());
+        d.classList.add('burned');
+      } else {
+        d.appendChild(sheetCellImg(it, lay.side));
+        if (ctx.onTap) {
+          d.style.cursor = 'pointer';
+          (function (pos) { d.addEventListener('click', function () { ctx.onTap(pos); }); })(it.pos);
+        }
       }
-      api.cardByPos[c.pos] = d;
+      api.cardByPos[it.pos] = d;
       grid.appendChild(d);
     });
     sheet.appendChild(grid);
@@ -1507,30 +1524,38 @@
   /* ---------- 11. 生成 PDF（系统打印 → 存为 PDF） ---------- */
   // 把已写字的笔迹渲染成图片（作品查看器用：按落笔记录重画，取景复刻书写时的成品快照）
   function renderInkImages() {
-    var imgs = [];
+    // 与整纸同一套管线：通用格 + 标点不占格（贴在上字右下角）；按全文顺序从笔迹记录渲染
+    var full = state.fullChars || state.chars || [];
     var byPos = state.workCharsByPos || {};
     var fontStack = (state.font && state.font.stack) || '';
-    for (var i = 0; i < state.chars.length; i++) {
+    var cells = [];
+    for (var i = 0; i < full.length; i++) {
       var saved = byPos[i];
-      if (!saved) continue;
-      var dataUrl = WritingPad.renderCropped(saved.strokes || {}, state.chars[i], fontStack);
-      if (dataUrl) imgs.push(dataUrl);
+      if (saved) cells.push({ pos: i, ch: saved.ch || full[i], saved: saved });
     }
+    var lay = sheetLayout(cells, fontStack, null);
+    var imgs = [];
+    lay.items.forEach(function (it) {
+      if (it.ash) return;
+      imgs.push(sheetCellImg(it, lay.side));
+    });
     return imgs;
   }
 
   function printableImages() {
-    // 刚写完的会话用成品快照；打开旧作则按笔迹记录渲染
+    // 笔迹记录是唯一真相源（含刚写的字）；快照只做兜底
+    var imgs = renderInkImages();
+    if (imgs.length) return imgs;
     if (state.workImages && state.workImages.length) return state.workImages.filter(Boolean);
-    return renderInkImages();
+    return imgs;
   }
 
-  function buildPrintSheet(imgs) {
+  function buildPrintSheet(imgs, total) {
     var ps = $('print-sheet');
     var d = new Date();
     var html = '<h1>抄经作品</h1>' +
       '<div class="print-meta">《' + escapeHtml(state.sutra ? state.sutra.title : '') + '》 · ' +
-      imgs.length + ' 字 · ' +
+      (total || imgs.length) + ' 字 · ' +
       d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate() + '</div>' +
       '<div class="print-grid">';
     imgs.forEach(function (src) {
@@ -1542,7 +1567,9 @@
   function printWork() {
     var imgs = printableImages();
     if (!imgs.length) { alert('还没有写完的字'); return; }
-    buildPrintSheet(imgs);
+    var byPos = state.workCharsByPos || {};
+    var total = Object.keys(byPos).length || imgs.length; // 含标点（标点贴在字格右下角）
+    buildPrintSheet(imgs, total);
     setTimeout(function () { window.print(); }, 300);
   }
 
@@ -2213,7 +2240,11 @@
     var byPos = state.workCharsByPos || {};
     var full = state.fullChars || state.chars || [];
     charQueue = [];
-    for (var i = 0; i < full.length; i++) if (byPos[i]) charQueue.push(i);
+    for (var i = 0; i < full.length; i++) {
+      if (!byPos[i]) continue;
+      var qc = byPos[i].ch || full[i];
+      if (!isPunct(qc)) charQueue.push(i); // 标点不占一张，滑动时跳过
+    }
     showScreen('screen-char');
     if (!charPad) {
       charPad = new WritingPad($('char-paper'), $('char-ink'), {
@@ -2239,7 +2270,7 @@
 
   function charShow() {
     var qi = charQueue.indexOf(charPos);
-    $('char-title').textContent = '第 ' + (charPos + 1) + ' 字 · ' + charCh();
+    $('char-title').textContent = '第 ' + (qi >= 0 ? qi + 1 : charPos + 1) + ' 字 · ' + charCh();
     $('char-prev').style.visibility = qi > 0 ? '' : 'hidden';
     $('char-next').style.visibility = (qi >= 0 && qi < charQueue.length - 1) ? '' : 'hidden';
     closeCharMenu();

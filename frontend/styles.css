@@ -266,8 +266,8 @@ button:active { transform: scale(0.97); }
   #print-sheet { display: block; color: #000; background: #fff; }
   #print-sheet h1 { text-align: center; letter-spacing: 10px; font-size: 28px; }
   #print-sheet .print-meta { text-align: center; color: #555; font-size: 13px; margin-bottom: 16px; }
-  #print-sheet .print-grid { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
-  #print-sheet .print-grid img { width: 120px; border: 1px solid #ccc; }
+  #print-sheet .print-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; }
+  #print-sheet .print-grid img { width: 100%; }
 }
 
 /* ---- 作品（v8）：画廊卡片 / 作品查看 / 回放 ---- */
