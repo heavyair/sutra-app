@@ -250,6 +250,28 @@ button:active { transform: scale(0.97); }
 .tools-menu.open .tool-item:nth-child(9) { --tx: 150px; --ty: -260px; }
 .tools-menu.open .tool-item:nth-child(10) { --tx: 230px; --ty: -210px; }
 
+/* 工具菜单内联选项面板：点 字体/背景音 时展开，其他工具按钮收起，不弹新界面 */
+.tool-panel {
+  position: absolute; pointer-events: auto;
+  left: calc(18px + env(safe-area-inset-left));
+  bottom: calc(100px + env(safe-area-inset-bottom));
+  width: min(340px, calc(100vw - 36px));
+  max-height: 62dvh; overflow-y: auto;
+  background: rgba(26, 22, 17, 0.96); border: 1px solid var(--gold);
+  border-radius: 16px; padding: 14px 0;
+}
+.tool-panel.hidden { display: none; }
+.tool-panel .pick-label { padding: 0 16px; margin-bottom: 8px; }
+.tool-panel .chip-row { padding: 0 16px; margin-bottom: 14px; }
+.tool-panel .vol-row { padding: 0 16px; margin-bottom: 14px; }
+.tool-panel .pick-cards { padding: 0 16px; }
+.tools-menu.panel-open .tool-item {
+  opacity: 0; transform: translate(0, 0) scale(0.4); pointer-events: none;
+}
+.tools-menu.panel-open .tool-item.active-tool {
+  opacity: 1; transform: translate(0, 0) scale(1); pointer-events: auto;
+}
+
 /* 悬浮小按钮 */
 .pill {
   position: absolute; z-index: 15;

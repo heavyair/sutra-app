@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1a1611">
 <title>抄经 · 静心</title>
-<link rel="stylesheet" href="styles.css?v=58">
+<link rel="stylesheet" href="styles.css?v=59">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@600&display=swap">
 </head>
@@ -81,30 +81,6 @@
     </div>
 
     <!-- 选笔（首次） -->
-    <!-- 换字体（工具内） -->
-    <div id="font-overlay" class="picker-overlay hidden">
-      <div class="picker-card">
-        <h3>选择字体</h3>
-        <div id="font-cards-2" class="pick-cards"></div>
-        <button id="btn-font-done" class="btn-primary btn-big">确定</button>
-      </div>
-    </div>
-
-    <!-- 背景音：背景层 + 纯音层 + 脑波层（工具内） -->
-    <div id="music-overlay" class="picker-overlay hidden">
-      <div class="picker-card">
-        <h3>背景音</h3>
-        <div class="pick-label">背景</div>
-        <div id="bg-chips" class="chip-row"></div>
-        <div class="vol-row"><span>音量</span><input id="bg-vol" type="range" min="0" max="100" step="1"></div>
-        <div class="pick-label">纯音</div>
-        <div id="tone-chips" class="chip-row"></div>
-        <div class="vol-row"><span>音量</span><input id="tone-vol" type="range" min="0" max="100" step="1"></div>
-        <div class="pick-label">脑波（可选）</div>
-        <div id="brain-chips" class="chip-row"></div>
-        <button id="btn-music-done" class="btn-primary btn-big">确定</button>
-      </div>
-    </div>
 
     <!-- 左下角：工具 + 橡皮 -->
     <div id="write-ui">
@@ -119,6 +95,10 @@
       <button class="tool-item" data-tool="music">背景音</button>
       <button class="tool-item" data-tool="view">欣赏</button>
       <button class="tool-item" data-tool="share">分享</button>
+      <!-- 内联选项面板：点 字体/背景音 时在菜单内展开，不弹新界面、不切屏 -->
+      <div id="tool-panel" class="tool-panel hidden" data-tool="">
+        <div id="tool-panel-body"></div>
+      </div>
     </div>
 
     <!-- 写完一字的过渡按钮 -->
@@ -280,8 +260,8 @@
 <!-- 打印专用：屏幕上隐藏，打印时显示 -->
 <div id="print-sheet"></div>
 
-<script src="music.js?v=58"></script>
-<script src="writing.js?v=58"></script>
-<script src="app.js?v=58"></script>
+<script src="music.js?v=59"></script>
+<script src="writing.js?v=59"></script>
+<script src="app.js?v=59"></script>
 </body>
 </html>

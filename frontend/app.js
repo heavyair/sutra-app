@@ -1191,6 +1191,7 @@
 
   /* ---------- 8. 工具菜单 ---------- */
   function closeTools() {
+    closeToolPanel();
     $('tools-menu').classList.remove('open');
     setTimeout(function () { $('tools-menu').classList.add('hidden'); }, 320);
   }
@@ -1209,21 +1210,17 @@
   document.querySelectorAll('.tool-item').forEach(function (b) {
     b.addEventListener('click', function () {
       var t = b.dataset.tool;
+      if (t === 'font' || t === 'music') {
+        // 选项类工具：菜单内联展开，不关菜单、不弹新界面
+        openToolPanel(t, b);
+        return;
+      }
       closeTools();
       if (t === 'sutra') {
         state.flowToken++;
         if (state.musicOn) { music.stop(); state.musicOn = false; }
         try { music.stopRecording(); } catch (e) {}
         showScreen('screen-library');
-      } else if (t === 'font') {
-        renderFontCards($('font-cards-2'), state.font.id, function (f) {
-          state.font = f;
-          if (pad) pad.setFont(f.stack);
-        });
-        $('font-overlay').classList.remove('hidden');
-      } else if (t === 'music') {
-        renderMusicChips();
-        $('music-overlay').classList.remove('hidden');
       } else if (t === 'view') {
         openWorkLocal();
       } else if (t === 'share') {
@@ -1232,23 +1229,74 @@
     });
   });
 
-  // 点菜单外任意处收起
+  // 选项类工具（字体/背景音）：在工具菜单内联展开选项面板，不弹新界面、不切屏；
+  // 再点一次该按钮收起
+  function openToolPanel(t, btn) {
+    var menu = $('tools-menu');
+    var panel = $('tool-panel');
+    if (!panel.classList.contains('hidden') && panel.dataset.tool === t) {
+      closeToolPanel();
+      return;
+    }
+    menu.classList.add('panel-open');
+    Array.prototype.forEach.call(menu.querySelectorAll('.tool-item'), function (x) {
+      x.classList.toggle('active-tool', x === btn);
+    });
+    panel.dataset.tool = t;
+    var body = $('tool-panel-body');
+    body.innerHTML = '';
+    if (t === 'music') renderMusicPanel(body);
+    else if (t === 'font') renderFontPanel(body);
+    panel.classList.remove('hidden');
+  }
+
+  function closeToolPanel() {
+    var menu = $('tools-menu');
+    menu.classList.remove('panel-open');
+    Array.prototype.forEach.call(menu.querySelectorAll('.tool-item'), function (x) {
+      x.classList.remove('active-tool');
+    });
+    var panel = $('tool-panel');
+    panel.classList.add('hidden');
+    panel.dataset.tool = '';
+  }
+
+  // 点菜单外任意处收起（面板内的点选不收起）
   $('screen-write').addEventListener('pointerdown', function (e) {
     var m = $('tools-menu');
-    if (!m.classList.contains('hidden') && !e.target.classList.contains('tool-item')) {
+    if (!m.classList.contains('hidden') && !e.target.classList.contains('tool-item') &&
+        !e.target.closest('#tool-panel')) {
       closeTools();
     }
   }, true);
 
-  $('btn-font-done').addEventListener('click', function () {
-    $('font-overlay').classList.add('hidden');
-    if (pad && !state.completing) pad.newChar(state.chars[state.charIndex]); // 新字体重画虚影
-  });
+  // 字体面板：卡片点选即生效，虚影字立即按新字体重画
+  function renderFontPanel(body) {
+    var title = document.createElement('div');
+    title.className = 'pick-label';
+    title.textContent = '字体';
+    var wrap = document.createElement('div');
+    wrap.className = 'pick-cards';
+    body.appendChild(title);
+    body.appendChild(wrap);
+    renderFontCards(wrap, state.font.id, function (f) {
+      state.font = f;
+      if (pad) pad.setFont(f.stack);
+      if (pad && !state.completing) pad.newChar(state.chars[state.charIndex]); // 新字体重画虚影
+    });
+  }
 
-  // 背景音选择面板：背景层 + 纯音层 + 脑波层，各自独立控制，即时生效并记住选择
-  function renderMusicChips() {
-    function chips(el, items, cur, onPick) {
-      el.innerHTML = '';
+  // 背景音面板：背景层 + 纯音层 + 脑波层，各自独立控制，即时生效并记住选择
+  function renderMusicPanel(body) {
+    function section(label) {
+      var el = document.createElement('div');
+      el.className = 'pick-label';
+      el.textContent = label;
+      body.appendChild(el);
+    }
+    function chips(items, cur, onPick) {
+      var el = document.createElement('div');
+      el.className = 'chip-row';
       items.forEach(function (it) {
         var c = document.createElement('button');
         c.className = 'chip' + (it.id === cur ? ' selected' : '');
@@ -1260,25 +1308,34 @@
         });
         el.appendChild(c);
       });
+      body.appendChild(el);
+      return el;
     }
-    chips($('bg-chips'), MusicEngine.getBackgrounds(), music.getBackground(),
-      function (id) { music.setBackground(id); });
-    chips($('tone-chips'), MusicEngine.getToneFreqs(), music.getToneFreq(),
-      function (id) { music.setToneFreq(id); });
-    chips($('brain-chips'), MusicEngine.getBrains(), music.getBrain(),
-      function (id) { music.setBrain(id); });
-    var bv = $('bg-vol'), tv = $('tone-vol');
-    bv.value = music.getBgVolume();
-    tv.value = music.getToneVolume();
-    bv.oninput = function () { music.setBgVolume(parseInt(bv.value, 10)); };
-    tv.oninput = function () { music.setToneVolume(parseInt(tv.value, 10)); };
+    function volRow(get, set) {
+      var row = document.createElement('div');
+      row.className = 'vol-row';
+      var lab = document.createElement('span');
+      lab.textContent = '音量';
+      var input = document.createElement('input');
+      input.type = 'range'; input.min = '0'; input.max = '100'; input.step = '1';
+      input.value = get();
+      input.addEventListener('input', function () { set(parseInt(input.value, 10)); });
+      row.appendChild(lab);
+      row.appendChild(input);
+      body.appendChild(row);
+    }
+    section('背景');
+    chips(MusicEngine.getBackgrounds(), music.getBackground(), function (id) { music.setBackground(id); });
+    volRow(function () { return music.getBgVolume(); }, function (v) { music.setBgVolume(v); });
+    section('纯音');
+    chips(MusicEngine.getToneFreqs(), music.getToneFreq(), function (id) { music.setToneFreq(id); });
+    volRow(function () { return music.getToneVolume(); }, function (v) { music.setToneVolume(v); });
+    section('脑波（可选）');
+    chips(MusicEngine.getBrains(), music.getBrain(), function (id) { music.setBrain(id); });
   }
-  $('btn-music-done').addEventListener('click', function () {
-    $('music-overlay').classList.add('hidden');
-  });
 
   function hideOverlays() {
-    ['font-overlay', 'music-overlay', 'done-overlay'].forEach(function (id) {
+    ['done-overlay'].forEach(function (id) {
       $(id).classList.add('hidden');
     });
     $('intro-overlay').classList.add('hidden');
