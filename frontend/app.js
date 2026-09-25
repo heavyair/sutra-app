@@ -1674,7 +1674,8 @@
         isBurned: function () { return false; }
       });
     }
-    state.workviewDual.render(cells, full.length, (local ? (state.sutra && state.sutra.title) : w.title) || '');
+    state.workviewTitle = (local ? (state.sutra && state.sutra.title) : w.title) || '';
+    state.workviewDual.render(cells, full.length, state.workviewTitle);
     // 功能按钮收拢进全局工具按钮：与查看器同一套（欣赏/查看器一致），只有"回去哪"看入口
     setScreenTools(workScreenTools());
     if (dedicated) {
@@ -2134,27 +2135,87 @@
     $('ceremony-fold').textContent = collapsed ? '展开 ↓' : '收起 ↑';
   });
 
-  /* ---------- 回放：重演一字的落笔过程 ---------- */
+  /* ---------- 回放：重演一字的落笔过程（与落笔放映同一套实现） ---------- */
+  // 按书写宽高比定舞台尺寸——先定尺寸、显示，再建 pad 并 _resize，
+  // 否则 backing store 与 CSS 对不上会被拉伸变形
+  function sizePlayStage(stageEl, ar, maxW, maxH) {
+    ar = ar || (window.innerWidth / window.innerHeight) || 0.5;
+    var sw = maxW, sh = sw / ar;
+    if (sh > maxH) { sh = maxH; sw = sh * ar; }
+    stageEl.style.width = Math.round(sw) + 'px';
+    stageEl.style.height = Math.round(sh) + 'px';
+    stageEl.style.aspectRatio = 'auto';
+  }
+
+  // 单字演绎（放映/单字回放共用）：标点盖印停 450ms，字后停 500ms；返回取消函数
+  function playOneChar(pad, ch, saved, onDone) {
+    pad.setFont(state.font.stack);
+    pad.newChar(ch);
+    var rec = (saved && saved.strokes) || {};
+    var timer = null, done = false;
+    var finish = function () { if (!done) { done = true; onDone(); } };
+    if (rec.auto === 'punct') {
+      pad.stampChar(ch);
+      timer = setTimeout(finish, 450);
+    } else {
+      pad.replayStrokes(rec.strokes ? rec : { pen: (saved && saved.pen) || 'maobi', strokes: [] }, {
+        onDone: function () { timer = setTimeout(finish, 500); }
+      });
+    }
+    return function () {
+      if (timer) clearTimeout(timer);
+      try { pad.cancelReplay(); } catch (e) {}
+    };
+  }
+
   var replayPad = null;
   var replayPos = -1;
+  var replayCh = '';
+  var replaySaved = null;
+  var replayCancel = null;   // 当前单字演绎的取消函数
+  var replayEditMode = false; // true=毛笔/橡皮改写中（可落笔），false=纯回放（禁落笔）
+
+  // 单字是否可改写：未回向，且（会话内作者本人 / owner / writer）
+  function replayCanRewrite() {
+    var w = (state.workData && state.workData.work) || {};
+    if (w.dedicated_at) return false;
+    if (state.workViewLocal) return true;
+    return w.role === 'owner' || w.role === 'writer';
+  }
+
+  function setReplayEditMode(on) {
+    replayEditMode = on;
+    var stage = $('replay-stage');
+    if (stage) stage.classList.toggle('no-input', !on); // 回放态禁落笔，改写态可落笔
+    var bb = $('btn-replay-brush'); if (bb) bb.classList.toggle('active', on);
+    var bs = $('btn-replay-save'); if (bs) bs.classList.toggle('hidden', !on);
+    if (on && replayPad) replayPad.setPen('maobi');
+  }
 
   function openReplay(pos) {
     var saved = (state.workCharsByPos || {})[pos];
     if (!saved) return;
     replayPos = pos;
-    var ch = ((state.fullChars || state.chars || [])[pos]) || '';
-    $('replay-label').textContent = '第 ' + (pos + 1) + ' 字 · ' + ch;
+    replaySaved = saved;
+    replayCh = ((state.fullChars || state.chars || [])[pos]) || '';
+    $('replay-label').textContent = '第 ' + (pos + 1) + ' 字 · ' + replayCh;
+    $('replay-tools').classList.toggle('hidden', !replayCanRewrite());
     $('replay-overlay').classList.remove('hidden');
+    // 舞台按该字书写时的宽高比定尺寸（与放映同算法），避免固定 3/4 框拉伸变形
+    var ar = ((saved.strokes || {}).ar) || (window.innerWidth / window.innerHeight) || 0.5;
+    sizePlayStage($('replay-stage'), ar, Math.min(window.innerWidth * 0.9, 380), window.innerHeight * 0.55);
     if (!replayPad) replayPad = new WritingPad($('replay-paper'), $('replay-ink'), {});
+    else replayPad._resize();
+    replayAgain();
+  }
+
+  // 再播一次：按已保存版本演绎（改写保存后播的是新版）
+  function replayAgain() {
+    if (replayCancel) { replayCancel(); replayCancel = null; }
+    setReplayEditMode(false);
+    var ch = replayCh, saved = replaySaved;
     var doPlay = function () {
-      replayPad.setFont(state.font.stack);
-      replayPad.newChar(ch);
-      var rec = saved.strokes || {};
-      if (rec.auto === 'punct') {
-        replayPad.stampChar(ch);
-      } else {
-        replayPad.replayStrokes(rec.strokes ? rec : { pen: saved.pen, strokes: [] });
-      }
+      replayCancel = playOneChar(replayPad, ch, saved, function () { replayCancel = null; });
     };
     try {
       var fam = state.font.web ? state.font.web.split(' ').slice(1).join(' ') : null;
@@ -2163,18 +2224,72 @@
     } catch (e) { doPlay(); }
   }
 
+  // 保存改写：更新本地字迹表 + 服务端 + 会话快照 + 格子
+  function saveReplayRewrite() {
+    if (replayPos < 0 || !replayPad) return;
+    var rec = replayPad.getCharRecord();
+    var entry = { pos: replayPos, ch: replayCh, pen: rec.pen || 'maobi', strokes: rec };
+    state.workCharsByPos[replayPos] = entry;
+    replaySaved = entry;
+    var w = (state.workData && state.workData.work) || {};
+    if (w.id) {
+      api('/api/works/' + w.id + '/chars', {
+        method: 'PUT',
+        body: JSON.stringify({ pos: replayPos, ch: replayCh, pen: entry.pen, strokes: rec })
+      }).catch(function () {});
+    }
+    // 会话快照（PDF 用）：按 sessionStartPos 换位
+    if (state.workImages && state.workImages.length) {
+      var si = replayPos - (state.sessionStartPos || 0);
+      var img = null;
+      try { img = replayPad.snapshot(); } catch (e) {}
+      if (img && si >= 0 && si < state.workImages.length) state.workImages[si] = img;
+    }
+    refreshWorkCells();
+    replayAgain(); // 回到回放态，播新版
+  }
+
+  // 改写单字后刷新作品双视图的格子（不清音频、不动菜单，保持当前视图与页码）
+  function refreshWorkCells() {
+    if (!state.workviewDual) return;
+    var full = state.fullChars || state.chars || [];
+    var byPos = state.workCharsByPos || {};
+    var cells = [];
+    for (var i = 0; i < full.length; i++) {
+      var saved = byPos[i];
+      if (saved) cells.push({ pos: i, ch: saved.ch || full[i], saved: saved });
+    }
+    var dual = state.workviewDual;
+    var v = dual.view, pi = dual.pagerIdx, si = dual.sheetIdx;
+    dual.render(cells, full.length, state.workviewTitle || '');
+    dual.pagerIdx = pi; dual.sheetIdx = si;
+    dual.switch(v);
+  }
+
   function closeReplay() {
-    if (replayPad) replayPad.cancelReplay();
+    if (replayCancel) { replayCancel(); replayCancel = null; }
     $('replay-overlay').classList.add('hidden');
-    replayPos = -1;
+    replayPos = -1; replaySaved = null;
+    setReplayEditMode(false);
   }
   $('btn-replay-close').addEventListener('click', closeReplay);
   $('btn-replay-again').addEventListener('click', function () {
-    if (replayPos >= 0) openReplay(replayPos);
+    if (replayPos >= 0) replayAgain();
   });
+  // 单字改写工具：毛笔（重写）/ 橡皮（擦除重写）/ 保存
+  // 进改写态即一张干净纸（虚影字引导），与写字屏"橡皮清空重写"一致，保证存下的记录就是看到的
+  function enterReplayEdit() {
+    if (!replayPad || replayPos < 0) return;
+    if (replayCancel) { replayCancel(); replayCancel = null; }
+    replayPad.newChar(replayCh); // 清空墨迹、重置落笔记录与计时、重画虚影字
+    setReplayEditMode(true);
+  }
+  $('btn-replay-brush').addEventListener('click', enterReplayEdit);
+  $('btn-replay-eraser').addEventListener('click', enterReplayEdit);
+  $('btn-replay-save').addEventListener('click', saveReplayRewrite);
 
   /* ---------- 落笔放映：整部作品按原节奏依次重演 ---------- */
-  var inkplayPad = null, inkplayTimer = 0, inkplayActive = false, inkplayLiveMusic = false;
+  var inkplayPad = null, inkplayActive = false, inkplayLiveMusic = false, inkplayCancel = null;
 
   function startInkplayLiveMusic() {
     // 没有录音时：现场生成写字时的同一套音乐
@@ -2194,13 +2309,7 @@
     // 否则 backing store 与 CSS 对不上会被拉伸变形
     var firstRec = (byPos[queue[0]] && byPos[queue[0]].strokes) || {};
     var ar = firstRec.ar || (window.innerWidth / window.innerHeight) || 0.5;
-    var stage = $('inkplay-stage');
-    var maxW = Math.min(window.innerWidth * 0.94, 480);
-    var maxH = window.innerHeight * 0.62;
-    var sw = maxW, sh = sw / ar;
-    if (sh > maxH) { sh = maxH; sw = sh * ar; }
-    stage.style.width = Math.round(sw) + 'px';
-    stage.style.height = Math.round(sh) + 'px';
+    sizePlayStage($('inkplay-stage'), ar, Math.min(window.innerWidth * 0.94, 480), window.innerHeight * 0.62);
     $('inkplay-overlay').classList.remove('hidden');
     if (!inkplayPad) inkplayPad = new WritingPad($('inkplay-paper'), $('inkplay-ink'), {});
     else inkplayPad._resize();
@@ -2230,24 +2339,14 @@
       var ch = full[pos];
       var saved = byPos[pos];
       $('inkplay-label').textContent = '第 ' + (pos + 1) + ' 字 · ' + ch + '（' + idx + '/' + queue.length + '）';
-      inkplayPad.newChar(ch);
-      var rec = (saved && saved.strokes) || {};
-      if (rec.auto === 'punct') {
-        inkplayPad.stampChar(ch);
-        inkplayTimer = setTimeout(step, 450);
-      } else {
-        inkplayPad.replayStrokes(rec.strokes ? rec : { pen: saved.pen, strokes: [] }, {
-          onDone: function () { inkplayTimer = setTimeout(step, 500); }
-        });
-      }
+      inkplayCancel = playOneChar(inkplayPad, ch, saved, step);
     };
     step();
   }
 
   function closeInkPlay() {
     inkplayActive = false;
-    clearTimeout(inkplayTimer);
-    if (inkplayPad) inkplayPad.cancelReplay();
+    if (inkplayCancel) { inkplayCancel(); inkplayCancel = null; }
     try { var au = $('workview-audio'); if (au) au.pause(); } catch (e) {}
     if (inkplayLiveMusic) {
       // 现场音乐是我们开的，关掉并还原
