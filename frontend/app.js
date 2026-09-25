@@ -1281,18 +1281,21 @@
   }
   function ashImg() { var img = document.createElement('img'); img.src = randomAsh(); return img; }
 
-  // 整纸字格：与 PDF 同取景（renderCropped 紧裁剪，大字满格）；按 pos+笔画对象缓存
+  // 整纸字格：通用格（全部字形边框的最大者，正方形，同一比例，透明底，无格线）；
+  // 先量所有字再统一渲染，按 pos+笔画对象+通用格尺寸缓存
   var _sheetCropCache = { key: '', map: {} };
-  function sheetCellImg(c) {
+  function sheetCellImg(c, side, box) {
     var wk = (state.work && state.work.id) ? 'w' + state.work.id : 'sess';
-    if (_sheetCropCache.key !== wk) _sheetCropCache = { key: wk, map: {} };
+    var fs = (state.font && state.font.stack) || '';
+    var skey = wk + '|' + fs.length + '|' + Math.round(side);
+    if (_sheetCropCache.key !== skey) _sheetCropCache = { key: skey, map: {} };
     var rec = (c.saved && c.saved.strokes) || {};
     var e = _sheetCropCache.map[c.pos];
     var img = document.createElement('img');
-    if (e && e.rec === rec) { img.src = e.src; }
+    if (e && e.rec === rec && e.fs === fs) { img.src = e.src; }
     else {
-      var src = WritingPad.renderCropped(rec, c.ch, (state.font && state.font.stack) || '');
-      _sheetCropCache.map[c.pos] = { rec: rec, src: src };
+      var src = WritingPad.renderSheetCell(rec, c.ch, fs, side, box);
+      _sheetCropCache.map[c.pos] = { rec: rec, fs: fs, src: src };
       img.src = src;
     }
     img.alt = c.ch || '';
@@ -1418,10 +1421,23 @@
       now.getFullYear() + '-' + (now.getMonth() + 1) + '-' + now.getDate();
     sheet.appendChild(metaEl);
     var grid = mkEl('div', 'sheet-grid');
+    // 通用格：量出所有字形的边框，取最大者为格（正方形，四周留 25%），各字以包围盒中心为锚居中
+    var fontStack = (state.font && state.font.stack) || '';
+    var boxByCh = {}, boxes = {}, side = 0;
+    cells.forEach(function (c) {
+      if (c.ash || (ctx.isBurned && ctx.isBurned(c.pos))) return;
+      var ar = (c.saved && c.saved.strokes && c.saved.strokes.ar) || null;
+      var bk = c.ch + '|' + (ar || '');
+      var b = boxByCh[bk] || (boxByCh[bk] = WritingPad.glyphBox(c.ch, fontStack, ar));
+      boxes[c.pos] = b;
+      if (b.bw > side) side = b.bw;
+      if (b.bh > side) side = b.bh;
+    });
+    side = side * 1.5 || 200; // 四周各留 25%（边长 ×1.5）
     cells.forEach(function (c) {
       var d = mkEl('div', 'sheet-cell');
       var burned = c.ash || (ctx.isBurned && ctx.isBurned(c.pos));
-      d.appendChild(burned ? ashImg() : sheetCellImg(c));
+      d.appendChild(burned ? ashImg() : sheetCellImg(c, side, boxes[c.pos]));
       if (burned) d.classList.add('burned');
       if (ctx.onTap) {
         d.style.cursor = 'pointer';

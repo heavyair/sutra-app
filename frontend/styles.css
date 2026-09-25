@@ -385,11 +385,12 @@ button:active { transform: scale(0.97); }
   text-align: center; white-space: nowrap; overflow: hidden;
   font-size: 11px; color: #8a7a5f; margin-bottom: 12px;
 }
-.sheet-grid { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: flex-start; }
-/* 字格：与 PDF 同取景（renderCropped 紧裁剪），自然高宽比，描边同 PDF */
-.sheet-cell { margin: 0; line-height: 0; }
-.sheet-cell img { width: 80px; height: auto; display: block; border: 1px solid #ccc; border-radius: 2px; box-sizing: border-box; background: #f4eddc; }
+.sheet-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+/* 字格：通用正方形（全部字形边框的最大者），同一比例，无格线 */
+.sheet-cell { margin: 0; line-height: 0; aspect-ratio: 1; }
+.sheet-cell img { width: 100%; height: 100%; display: block; }
 .sheet-cell.burned { box-shadow: inset 0 0 10px rgba(110,100,75,.4); border-radius: 4px; }
+.sheet-cell.burned img { object-fit: cover; }
 .work-empty-hint { color: var(--ink-dim); text-align: center; font-size: 13px; padding: 6px 0 20px; }
 .ceremony-title-row { display: flex; align-items: center; justify-content: space-between; }
 .ceremony-banner .dedication-label { color: rgba(222,192,132,.92); margin-bottom: 4px;

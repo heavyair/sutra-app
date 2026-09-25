@@ -588,20 +588,17 @@
     });
   };
 
-  /* 作品查看器 PDF 用：复刻书写时 pad.snapshot() 的取景 ——
-   * 按原画布宽高比画满整张，再扫描模板字形得包围盒（与 pad._computeGrid 同算法），
-   * 四周留 25% 裁剪，纸底，360px 宽。与书写中"欣赏→PDF"的成品快照同取景。 */
-  WritingPad.renderCropped = function (rec, ch, fontStack) {
+  /* 模板字形测量见 glyphBox；作品查看器 PDF 用：复刻书写时 pad.snapshot() 的取景 ——
+  /* 模板字形包围盒（与 pad._computeGrid 同算法；renderCropped / 整纸通用格共用）。
+   * ar：参考画布宽高比（renderCropped 传本字 rec.ar；整纸传当前视口比即可） */
+  WritingPad.glyphBox = function (ch, fontStack, ar) {
     var W = 390;
-    var ar = (rec && rec.ar) || WritingPad._viewportAr() || 0.5;
-    var H = Math.max(1, Math.round(W / ar));
+    var r = ar || WritingPad._viewportAr() || 0.5;
+    var H = Math.max(1, Math.round(W / r));
     var px = Math.min(W, H) * 0.52;
     var cx = W / 2, cy = H * 0.44;
-    // 字体栈与书写时 pad.fontStack 完全一致（setFont(state.font.stack) 原样传入，不加后缀）
     var fs = fontStack || '"Kaiti SC","KaiTi","STKaiti",serif';
     var font = px + 'px ' + fs;
-    // 1) 模板字形包围盒（_computeGrid 同款；失败则 _fallbackGrid 同款）
-    var bx, by, bw, bh;
     try {
       var off = document.createElement('canvas');
       off.width = W; off.height = H;
@@ -622,10 +619,45 @@
         }
       }
       if (maxX < 0) throw 0;
-      bx = minX; by = minY; bw = maxX - minX + 1; bh = maxY - minY + 1;
+      return { bx: minX, by: minY, bw: maxX - minX + 1, bh: maxY - minY + 1,
+               W: W, H: H, px: px, cx: cx, cy: cy, font: font, fs: fs };
     } catch (e) {
-      bx = cx - px / 2; by = cy - px / 2; bw = px; bh = px;
+      return { bx: cx - px / 2, by: cy - px / 2, bw: px, bh: px,
+               W: W, H: H, px: px, cx: cx, cy: cy, font: font, fs: fs };
     }
+  };
+
+  /* 整纸通用格：所有字共用 side×side 正方形（含 25% 留白），各自以包围盒中心为锚居中，
+   * 同一比例、透明底、无格线。side 取全部字形边框的最大值，由调用方先量好传入。 */
+  WritingPad.renderSheetCell = function (rec, ch, fontStack, side, box) {
+    box = box || WritingPad.glyphBox(ch, fontStack, (rec && rec.ar) || null);
+    var W = box.W, H = box.H, px = box.px, cx = box.cx, cy = box.cy, fs = box.fs;
+    var cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    if (rec && rec.auto === 'punct') {
+      // 标点复刻 pad.stampChar：0.55x 字号、同字体栈、同锚点盖印
+      var c2 = cv.getContext('2d');
+      c2.font = (px * 0.55) + 'px ' + fs;
+      c2.textAlign = 'center';
+      c2.textBaseline = 'middle';
+      c2.fillStyle = '#2b2118';
+      c2.fillText(ch || '', cx, cy);
+    } else {
+      WritingPad.drawStatic(cv, rec, ch);
+    }
+    var bcx = box.bx + box.bw / 2, bcy = box.by + box.bh / 2;
+    var sx = Math.max(0, Math.min(W - side, Math.round(bcx - side / 2)));
+    var sy = Math.max(0, Math.min(H - side, Math.round(bcy - side / 2)));
+    var out = 200, tmp = document.createElement('canvas');
+    tmp.width = out; tmp.height = out;
+    tmp.getContext('2d').drawImage(cv, sx, sy, side, side, 0, 0, out, out);
+    try { return tmp.toDataURL('image/png'); } catch (e2) { return ''; }
+  };
+
+  WritingPad.renderCropped = function (rec, ch, fontStack) {
+    var box = WritingPad.glyphBox(ch, fontStack, (rec && rec.ar) || null);
+    var W = box.W, H = box.H, px = box.px, cx = box.cx, cy = box.cy, fs = box.fs;
+    var bx = box.bx, by = box.by, bw = box.bw, bh = box.bh;
     // 2) 重画字迹。标点复刻 pad.stampChar：0.55x 字号、同字体栈、同锚点盖印，
     //    与书写时的成品快照完全一致（drawStatic 的标点分支字体不同，裁剪会对不上）
     var cv = document.createElement('canvas');
