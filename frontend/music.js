@@ -50,7 +50,9 @@
   MusicEngine.prototype._ensureCtx = function () {
     if (this.ctx) return;
     var AC = global.AudioContext || global.webkitAudioContext;
-    this.ctx = new AC();
+    // latencyHint: 'playback' —— 增大音频缓冲，防手机端 CPU 繁忙时随机爆音（环境音乐对延迟不敏感）
+    try { this.ctx = new AC({ latencyHint: 'playback' }); }
+    catch (e) { this.ctx = new AC(); }
     this.master = this.ctx.createGain();
     this.master.gain.value = this.muted ? 0 : 0.6;
     this.master.connect(this.ctx.destination);
