@@ -230,15 +230,7 @@
       return getToken() ? [] : [{ label: '登录', onClick: gotoLogin }];
     }
     if (id === 'screen-work') {
-      var witems = state.workViewLocal ? localWorkTools() : workviewTools();
-      var wvt = viewToggleItem(state.workviewDual, 'screen-work');
-      if (wvt) witems.push(wvt);
-      if (state.workViewLocal) {
-        witems.push({ label: '返回', onClick: function () { showScreen('screen-write'); } });
-      } else {
-        witems.push({ label: '经文库', onClick: function () { state.flowToken++; showScreen('screen-library'); } });
-      }
-      return witems;
+      return workScreenTools();
     }
     if (id === 'screen-dedications') {
       return [{ label: '经文库', onClick: function () { showScreen('screen-library'); } }];
@@ -1446,21 +1438,51 @@
     };
   }
 
-  /* ---------- 10. 欣赏（已并入作品查看器：会话内用本地字迹表 + 会话快照，不拉服务端） ---------- */
+  /* ---------- 10. 欣赏（已并入作品查看器：会话内用本地字迹表 + 会话快照，不拉服务端字） ---------- */
   function openWorkLocal() {
     state.workViewLocal = true;
+    state.workMetaLoaded = false;
     state.workData = { ok: true, work: state.work || {} };
     state.workShare = '';
     renderWorkView(state.workData, '', { local: true });
     showScreen('screen-work');
+    // 再拉一份服务端作品信息（只要权限字段：role/can_dedicate/chars_done…），
+    // 把功能菜单补成和查看器完全一致；字仍用本地的，不重拉（刚写的字服务端可能还没落盘）
+    var wid = state.work && state.work.id;
+    if (wid) {
+      api('/api/works/' + wid).then(function (res) {
+        if (!res || !res.ok || !res.work) return;
+        if (!state.workViewLocal) return; // 已离开，不管
+        var w = res.work, lw = state.workData.work;
+        lw.role = w.role; lw.can_dedicate = w.can_dedicate;
+        lw.chars_done = w.chars_done; lw.chars_total = w.chars_total;
+        lw.dedicated_at = w.dedicated_at; lw.has_audio = w.has_audio;
+        lw.owner_type = w.owner_type; lw.title = w.title || lw.title;
+        state.workMetaLoaded = true;
+        if ($('screen-work').classList.contains('active')) setScreenTools(workScreenTools());
+      }).catch(function () { /* 取不到就保持精简菜单 */ });
+    }
   }
 
-  // 会话内欣赏的功能按钮（写字途中的"瞥一眼"）：PDF、分享、视图切换、返回抄写
+  // 会话内欣赏的过渡菜单（权限未取回前）：PDF、分享、视图切换、返回抄写
   function localWorkTools() {
     return [
       { label: 'PDF', onClick: printWork },
       { label: '分享', onClick: shareWork }
     ];
+  }
+
+  // 作品屏统一菜单：功能项只看作品状态（欣赏/查看器一致），只有"回去哪"看入口
+  function workScreenTools() {
+    var items = (state.workViewLocal && !state.workMetaLoaded) ? localWorkTools() : workviewTools();
+    var vt = viewToggleItem(state.workviewDual, 'screen-work');
+    if (vt) items.push(vt);
+    if (state.workViewLocal) {
+      items.push({ label: '返回', onClick: function () { showScreen('screen-write'); } });
+    } else {
+      items.push({ label: '经文库', onClick: function () { state.flowToken++; showScreen('screen-library'); } });
+    }
+    return items;
   }
 
   /* ---------- 11. 生成 PDF（系统打印 → 存为 PDF） ---------- */
@@ -1567,6 +1589,7 @@
         state.workShare = share || '';
         state.workImages = []; // viewer 的 PDF 按笔迹记录渲染，不用会话快照
         state.workViewLocal = false;
+        state.workMetaLoaded = true; // 服务端一次拉全，权限字段齐了
         renderWorkView(res, share);
         showScreen('screen-work');
       });
@@ -1597,7 +1620,7 @@
   function renderWorkView(res, share, opts) {
     var local = !!(opts && opts.local); // 会话内欣赏：本地字迹表，不拉服务端
     var w = res.work || {};
-    var full = local ? (state.fullChars || state.chars || []) : (state.chars || []);
+    var full = state.fullChars || state.chars || [];
     // 录音只供落笔放映播放，不再显示播放器（纸上无按钮）
     var au = $('workview-audio');
     au.style.display = 'none';
@@ -1652,8 +1675,8 @@
       });
     }
     state.workviewDual.render(cells, full.length, (local ? (state.sutra && state.sutra.title) : w.title) || '');
-    // 功能按钮收拢进全局工具按钮：会话内（PDF/分享/返回）；服务端作品（续写/放映/PDF/分享/回向/删除）
-    setScreenTools(local ? localWorkTools() : workviewTools());
+    // 功能按钮收拢进全局工具按钮：与查看器同一套（欣赏/查看器一致），只有"回去哪"看入口
+    setScreenTools(workScreenTools());
     if (dedicated) {
       // 纪念态：不可再欣赏（无放映/PDF/回放/续写），展示尘埃与回向文
       var db = $('dedication-block');
@@ -2078,6 +2101,7 @@
           w.ash_cells = ashCells;
           w.has_audio = false;
         }
+        state.workViewLocal = false; // 回向后不可再写，"回去"改回经文库
         renderWorkView(state.workData, state.workShare);
         try { window.scrollTo(0, 0); } catch (e) {}
       }, 3200);
@@ -2162,8 +2186,9 @@
 
   function openInkPlay() {
     var byPos = state.workCharsByPos || {};
+    var full = state.fullChars || state.chars || [];
     var queue = [];
-    for (var i = 0; i < state.chars.length; i++) if (byPos[i]) queue.push(i);
+    for (var i = 0; i < full.length; i++) if (byPos[i]) queue.push(i);
     if (!queue.length) { alert('还没有写完的字'); return; }
     // 舞台按书写时的宽高比定尺寸——先定尺寸、显示，再建 pad 并 _resize，
     // 否则 backing store 与 CSS 对不上会被拉伸变形
@@ -2202,7 +2227,7 @@
         return;
       }
       var pos = queue[idx++];
-      var ch = state.chars[pos];
+      var ch = full[pos];
       var saved = byPos[pos];
       $('inkplay-label').textContent = '第 ' + (pos + 1) + ' 字 · ' + ch + '（' + idx + '/' + queue.length + '）';
       inkplayPad.newChar(ch);
