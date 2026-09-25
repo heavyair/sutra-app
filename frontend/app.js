@@ -720,10 +720,18 @@
     });
   }
 
+  // 按用户保存的背景音模式自动开乐（选"静"则不开）
+  function autoStartMusic() {
+    try {
+      var want = music.getSavedBgMode ? music.getSavedBgMode() : 'strings';
+      if (want !== 'silent' && !state.musicOn) { music.start(); state.musicOn = true; }
+    } catch (e) {}
+  }
+
   /* ---------- 4. 点经文：永远直达抄写（开一份新作品；旧作去「我的抄本」续写/欣赏） ---------- */
   function openSutra(id, done) {
     // 新经：手势链内先解锁音频，再拉经文，直达抄写界面
-    try { if (!state.musicOn) { music.start(); state.musicOn = true; } } catch (e) {}
+    autoStartMusic();
     api('/api/sutra/' + encodeURIComponent(id)).then(function (res) {
       if (done) done();
       if (!res.ok) { stopPreMusic(); alert(res.message || '加载失败，请重试'); return; }
@@ -870,7 +878,7 @@
     pad.setPen(state.pen.id);
     // 开乐（用户手势链中，可直接启动 AudioContext）；显示经文时静音
     // music.start() 包 try：音乐失败也不能挡住 beginChar（否则虚影字出不来）
-    try { if (!state.musicOn) { music.start(); state.musicOn = true; } } catch (e) {}
+    autoStartMusic();
     try { music.setAudible(false); } catch (e) {}
 
     var overlay = $('intro-overlay');
@@ -1216,7 +1224,7 @@
   document.querySelectorAll('.tool-item').forEach(function (b) {
     b.addEventListener('click', function () {
       var t = b.dataset.tool;
-      if (t === 'font' || t === 'bass') {
+      if (t === 'font' || t === 'music') {
         // 选项类工具：菜单内联展开，不关菜单、不弹新界面
         openToolPanel(t, b);
         return;
@@ -1227,11 +1235,6 @@
         if (state.musicOn) { music.stop(); state.musicOn = false; }
         try { music.stopRecording(); } catch (e) {}
         showScreen('screen-library');
-      } else if (t === 'music') {
-        // 背景音：只有开/关，没有场景和频率选择
-        var on = music.toggle();
-        state.musicOn = on;
-        b.classList.toggle('off', !on);
       } else if (t === 'gamma40') {
         // 40Hz 铺底：独立开关，默认开，记住选择
         var g = music.getGammaOn();
@@ -1262,7 +1265,7 @@
     var body = $('tool-panel-body');
     body.innerHTML = '';
     if (t === 'font') renderFontPanel(body);
-    else if (t === 'bass') renderBassPanel(body);
+    else if (t === 'music') renderMusicPanel(body);
     panel.classList.remove('hidden');
   }
 
@@ -1302,23 +1305,24 @@
     });
   }
 
-  // 低音面板：持续低音 / 大罄二选一，点选即生效
-  function renderBassPanel(body) {
+  // 背景音面板：静 / 弦 / 罄三选一，点选即生效
+  function renderMusicPanel(body) {
     var title = document.createElement('div');
     title.className = 'pick-label';
-    title.textContent = '低音';
+    title.textContent = '背景音';
     var wrap = document.createElement('div');
     wrap.className = 'pick-cards';
     body.appendChild(title);
     body.appendChild(wrap);
-    var styles = [
-      { id: 'drone', name: '持续低音', desc: '正弦铺底，呼吸起伏' },
-      { id: 'bigchime', name: '大罄', desc: '深沉寺磬，定时敲击' }
+    var modes = [
+      { id: 'silent', name: '静', desc: '关闭背景音' },
+      { id: 'strings', name: '弦', desc: '持续低音铺底' },
+      { id: 'chime', name: '罄', desc: '大罄，31 分钟一击' }
     ];
-    var cur = 'drone';
-    try { cur = music.getBassStyle ? music.getBassStyle() : 'drone'; } catch (e) {}
+    var cur = 'strings';
+    try { cur = music.getBgMode ? music.getBgMode() : 'strings'; } catch (e) {}
     wrap.innerHTML = '';
-    styles.forEach(function (s) {
+    modes.forEach(function (s) {
       var b = document.createElement('button');
       b.className = 'pick-card' + (s.id === cur ? ' selected' : '');
       b.innerHTML = '<span><span class="pick-name">' + s.name + '</span>' +
@@ -1326,7 +1330,10 @@
       b.addEventListener('click', function () {
         wrap.querySelectorAll('.pick-card').forEach(function (x) { x.classList.remove('selected'); });
         b.classList.add('selected');
-        try { music.setBassStyle(s.id); } catch (e) {}
+        try { music.setBgMode(s.id); } catch (e) {}
+        state.musicOn = (s.id !== 'silent');
+        var mb = $('tools-menu').querySelector('[data-tool="music"]');
+        if (mb) mb.classList.toggle('off', s.id === 'silent');
       });
       wrap.appendChild(b);
     });
@@ -2040,7 +2047,7 @@
     resetParaRhythm();
     pad.setFont(state.font.stack);
     pad.setPen(state.pen.id);
-    try { if (!state.musicOn) { music.start(); state.musicOn = true; } } catch (e) {}
+    autoStartMusic();
     try { music.setAudible(true); } catch (e) {}
     try { music.startRecording(); } catch (e) {}
     beginChar();
@@ -2733,9 +2740,10 @@
   var inkplayPad = null, inkplayActive = false, inkplayLiveMusic = false, inkplayCancel = null;
 
   function startInkplayLiveMusic() {
-    // 没有录音时：现场生成写字时的同一套音乐
+    // 没有录音时：现场生成写字时的同一套音乐（用户选"静"则不开）
     try {
-      if (!state.musicOn) { music.start(); state.musicOn = true; inkplayLiveMusic = true; }
+      var want = music.getSavedBgMode ? music.getSavedBgMode() : 'strings';
+      if (want !== 'silent' && !state.musicOn) { music.start(); state.musicOn = true; inkplayLiveMusic = true; }
       music.setAudible(true);
     } catch (e) {}
   }

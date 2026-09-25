@@ -150,12 +150,12 @@
     });
   };
 
-  // 大罄：一击深沉寺磬（低八度 + 非谐泛音列，自然衰减十几秒）
+  // 大罄：一击深沉寺磬（低八度 + 非谐泛音列，余韵可达 30 分钟）
   MusicEngine.prototype._bigChime = function (when) {
     var ctx = this.ctx, self = this;
     var base = midiToFreq(this.config.root_midi - 12);
     // [倍频, 相对音量, 衰减秒数]
-    [[1, 1.0, 20], [2.01, 0.45, 15], [2.74, 0.30, 12], [3.76, 0.18, 9], [5.43, 0.10, 7]].forEach(function (pr) {
+    [[1, 1.0, 1800], [2.01, 0.45, 1350], [2.74, 0.30, 1080], [3.76, 0.18, 810], [5.43, 0.10, 630]].forEach(function (pr) {
       var osc = ctx.createOscillator();
       osc.type = 'sine';
       osc.frequency.value = base * pr[0];
@@ -167,21 +167,43 @@
       g.connect(self.layers.L0);
       osc.start(when);
       osc.stop(when + pr[2] + 0.5);
+      self._bassNodes.push(osc); // 跟踪：切换风格时停掉，不留 30 分钟余音鬼影
     });
   };
 
-  // 大罄：低音声部一直开，每 28~52 秒敲一声
+  // 大罄：低音声部一直开，每 31 分钟敲一下
   MusicEngine.prototype._startBigChime = function () {
     var self = this;
     this._bassTimers = [];
+    var INTERVAL = 31 * 60 * 1000;
     function tick() {
       if (!self.playing) return;
       self._bigChime(self.ctx.currentTime + 0.05);
-      self._bassTimers.push(setTimeout(tick, 28000 + Math.random() * 24000));
+      self._bassTimers.push(setTimeout(tick, INTERVAL));
     }
     // 开场先敲一声，确立低音
     this._bigChime(this.ctx.currentTime + 0.1);
-    this._bassTimers.push(setTimeout(tick, 28000 + Math.random() * 24000));
+    this._bassTimers.push(setTimeout(tick, INTERVAL));
+  };
+
+  // 背景音三选一：静 / 弦（持续低音） / 罄（大罄）
+  MusicEngine.prototype.setBgMode = function (mode) {
+    if (mode !== 'strings' && mode !== 'chime') mode = 'silent';
+    try { localStorage.setItem('sutra_bgmode', mode); } catch (e) {}
+    if (mode === 'silent') { this.stop(); return; }
+    this.setBassStyle(mode === 'chime' ? 'bigchime' : 'drone');
+    if (!this.playing) this.start();
+  };
+  MusicEngine.prototype.getSavedBgMode = function () {
+    try {
+      var m = localStorage.getItem('sutra_bgmode');
+      if (m === 'silent' || m === 'strings' || m === 'chime') return m;
+    } catch (e) {}
+    return 'strings'; // 默认：开（弦）
+  };
+  MusicEngine.prototype.getBgMode = function () {
+    if (!this.playing) return this.getSavedBgMode();
+    return this._bassStyle === 'bigchime' ? 'chime' : 'strings';
   };
 
   // L1 轻磬：纯净柔和，一声、余韵悠长（近谐泛音，无滑音）
