@@ -864,6 +864,10 @@
     var overlay = $('intro-overlay');
     var titleEl = $('intro-title');
     var paraEl = $('intro-para');
+    // 虚影字立即隐藏：段落结束时上一字的虚影还在纸上，
+    // intro-overlay 是透明的，不清掉就会和经文叠加
+    var pc = $('paper-canvas');
+    if (pc) { pc.style.transition = 'none'; pc.style.opacity = '0'; }
     overlay.classList.remove('hidden', 'fading');
     titleEl.style.display = 'none';
     paraEl.style.display = '';
