@@ -229,21 +229,15 @@
     if (id === 'screen-library') {
       return getToken() ? [] : [{ label: '登录', onClick: gotoLogin }];
     }
-    if (id === 'screen-appreciate') {
-      var items = [
-        { label: 'PDF', onClick: printWork },
-        { label: '分享', onClick: shareWork }
-      ];
-      var vt = viewToggleItem(state.appreciateDual, 'screen-appreciate');
-      if (vt) items.push(vt);
-      items.push({ label: '返回', onClick: function () { showScreen('screen-write'); } });
-      return items;
-    }
     if (id === 'screen-work') {
-      var witems = workviewTools();
+      var witems = state.workViewLocal ? localWorkTools() : workviewTools();
       var wvt = viewToggleItem(state.workviewDual, 'screen-work');
       if (wvt) witems.push(wvt);
-      witems.push({ label: '经文库', onClick: function () { state.flowToken++; showScreen('screen-library'); } });
+      if (state.workViewLocal) {
+        witems.push({ label: '返回', onClick: function () { showScreen('screen-write'); } });
+      } else {
+        witems.push({ label: '经文库', onClick: function () { state.flowToken++; showScreen('screen-library'); } });
+      }
       return witems;
     }
     if (id === 'screen-dedications') {
@@ -1088,7 +1082,7 @@
         state.musicOn = on;
         b.classList.toggle('off', !on);
       } else if (t === 'view') {
-        openAppreciate();
+        openWorkLocal();
       } else if (t === 'share') {
         shareWork();
       }
@@ -1156,7 +1150,7 @@
     return [
       { label: '欣赏', onClick: function () {
           $('done-overlay').classList.add('hidden');
-          openAppreciate();
+          openWorkLocal();
         } },
       { label: 'PDF', onClick: printWork },
       { label: '分享', onClick: shareWork },
@@ -1310,19 +1304,6 @@
     return img;
   }
 
-  // 已写字按全文序号收集（欣赏/查看器共用）
-  function collectWorkCells() {
-    var byPos = state.workCharsByPos || {};
-    var full = state.fullChars || state.chars || [];
-    var total = state.totalChars || full.length;
-    var cells = [];
-    for (var pos = 0; pos < total; pos++) {
-      var s = byPos[pos];
-      if (s) cells.push({ pos: pos, ch: s.ch || full[pos], saved: s });
-    }
-    return { cells: cells, total: total };
-  }
-
   // 双视图组件：withToggle 为 true 时才显示 逐字|整纸 切换条（仪式用）；
   // 欣赏/查看器的切换收进工具菜单（ctx: {onTap(pos), isBurned(pos)}）
   function createDualView(mount, ctx, withToggle) {
@@ -1465,17 +1446,21 @@
     };
   }
 
-  /* ---------- 10. 欣赏 ---------- */
-  function openAppreciate() {
-    var cc = collectWorkCells();
-    if (!state.appreciateDual) {
-      state.appreciateDual = createDualView($('appreciate-dual'), {
-        onTap: function (pos) { openReplay(pos); },
-        isBurned: function () { return false; }
-      });
-    }
-    state.appreciateDual.render(cc.cells, cc.total, state.sutra ? state.sutra.title : '');
-    showScreen('screen-appreciate');
+  /* ---------- 10. 欣赏（已并入作品查看器：会话内用本地字迹表 + 会话快照，不拉服务端） ---------- */
+  function openWorkLocal() {
+    state.workViewLocal = true;
+    state.workData = { ok: true, work: state.work || {} };
+    state.workShare = '';
+    renderWorkView(state.workData, '', { local: true });
+    showScreen('screen-work');
+  }
+
+  // 会话内欣赏的功能按钮（写字途中的"瞥一眼"）：PDF、分享、视图切换、返回抄写
+  function localWorkTools() {
+    return [
+      { label: 'PDF', onClick: printWork },
+      { label: '分享', onClick: shareWork }
+    ];
   }
 
   /* ---------- 11. 生成 PDF（系统打印 → 存为 PDF） ---------- */
@@ -1581,6 +1566,7 @@
         state.workData = res;
         state.workShare = share || '';
         state.workImages = []; // viewer 的 PDF 按笔迹记录渲染，不用会话快照
+        state.workViewLocal = false;
         renderWorkView(res, share);
         showScreen('screen-work');
       });
@@ -1608,13 +1594,15 @@
     return items;
   }
 
-  function renderWorkView(res, share) {
-    var w = res.work;
+  function renderWorkView(res, share, opts) {
+    var local = !!(opts && opts.local); // 会话内欣赏：本地字迹表，不拉服务端
+    var w = res.work || {};
+    var full = local ? (state.fullChars || state.chars || []) : (state.chars || []);
     // 录音只供落笔放映播放，不再显示播放器（纸上无按钮）
     var au = $('workview-audio');
     au.style.display = 'none';
     if (state.audioBlobUrl) { try { URL.revokeObjectURL(state.audioBlobUrl); } catch (e) {} state.audioBlobUrl = null; }
-    if (w.has_audio) {
+    if (!local && w.has_audio) {
       au.removeAttribute('src');
       var audioUrl = '/api/works/' + w.id + '/audio' + (share ? '?share=' + encodeURIComponent(share) : '');
       // <audio> 发不出 Authorization / X-Anon-Key，带鉴权取 blob 再播（登录用户私作直连会 404）
@@ -1630,23 +1618,28 @@
         au.src = state.audioBlobUrl;
       }).catch(function () { /* 取不到录音：放映时用现场音乐兜底 */ });
     } else {
-      au.style.display = 'none';
       au.removeAttribute('src');
     }
-    var byPos = {};
-    res.chars.forEach(function (c) { byPos[c.pos] = c; });
-    state.workCharsByPos = byPos;
-    var dedicated = !!w.dedicated_at;
+    var byPos;
+    if (local) {
+      // 会话内：刚写的字服务端可能还没落盘，用本地字迹表，不覆盖
+      byPos = state.workCharsByPos || {};
+    } else {
+      byPos = {};
+      (res.chars || []).forEach(function (c) { byPos[c.pos] = c; });
+      state.workCharsByPos = byPos;
+    }
+    var dedicated = !local && !!w.dedicated_at;
     // 双视图：逐字 / 整纸；写过的字展示手写纸卡（点卡回放落笔）；已回向则只显示尘埃卡
     var cells = [];
     if (dedicated) {
       (w.ash_cells || []).slice().sort(function (a, b) { return a - b; }).forEach(function (pos) {
-        cells.push({ pos: pos, ch: state.chars[pos], ash: true });
+        cells.push({ pos: pos, ch: full[pos], ash: true });
       });
     } else {
-      for (var i = 0; i < state.chars.length; i++) {
+      for (var i = 0; i < full.length; i++) {
         var saved = byPos[i];
-        if (saved) cells.push({ pos: i, ch: saved.ch || state.chars[i], saved: saved });
+        if (saved) cells.push({ pos: i, ch: saved.ch || full[i], saved: saved });
       }
     }
     if (!state.workviewDual) {
@@ -1658,9 +1651,9 @@
         isBurned: function () { return false; }
       });
     }
-    state.workviewDual.render(cells, state.chars.length, w.title || '');
-    // 功能按钮收拢进全局工具按钮：续写（写完则无）；分享/删除仅作者；回向：登录作者或公开作品最后书写者
-    setScreenTools(workviewTools());
+    state.workviewDual.render(cells, full.length, (local ? (state.sutra && state.sutra.title) : w.title) || '');
+    // 功能按钮收拢进全局工具按钮：会话内（PDF/分享/返回）；服务端作品（续写/放映/PDF/分享/回向/删除）
+    setScreenTools(local ? localWorkTools() : workviewTools());
     if (dedicated) {
       // 纪念态：不可再欣赏（无放映/PDF/回放/续写），展示尘埃与回向文
       var db = $('dedication-block');

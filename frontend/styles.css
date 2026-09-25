@@ -26,7 +26,7 @@ html, body {
 .screen { display: none; min-height: 100dvh; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 .screen.active { display: block; }
 /* 顶栏已移除：各屏顶部留出安全距离 */
-#screen-library, #screen-appreciate, #screen-work { padding-top: calc(10px + env(safe-area-inset-top)); }
+#screen-library, #screen-work { padding-top: calc(10px + env(safe-area-inset-top)); }
 
 /* 顶栏 */
 .topbar {
