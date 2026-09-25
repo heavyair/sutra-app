@@ -60,6 +60,13 @@
     var nb = this.ctx.createBuffer(1, this.ctx.sampleRate * 4, this.ctx.sampleRate);
     var nd = nb.getChannelData(0);
     for (var n = 0; n < nd.length; n++) nd[n] = Math.random() * 2 - 1;
+    // 尾部 0.2 秒渐变为头部首值：loop 循环点连续，消除周期性爆破音
+    var fadeLen = Math.floor(this.ctx.sampleRate * 0.2);
+    for (var fi = 0; fi < fadeLen; fi++) {
+      var ft = fi / (fadeLen - 1); // 0 → 1
+      var tailIdx = nd.length - fadeLen + fi;
+      nd[tailIdx] = nd[tailIdx] * (1 - ft) + nd[0] * ft;
+    }
     this._noiseBuf = nb;
   };
 
