@@ -35,6 +35,10 @@
     this.playing = false;
     this.muted = false;
     this.noteIndex = 0;    // 五声音阶随机游走当前位置
+    // 40Hz 铺底开关：用户可选，默认开，localStorage 记住
+    var savedGamma = null;
+    try { savedGamma = localStorage.getItem('sutra_gamma40'); } catch (e) {}
+    this._gammaOn = savedGamma !== '0';
   }
 
   MusicEngine.prototype.setConfig = function (cfg) {
@@ -271,9 +275,17 @@
     osc.connect(g);
     g.connect(this.layers.L4);
     osc.start();
-    // 缓慢浮现，不打扰入静
-    this.layers.L4.gain.setTargetAtTime(1, ctx.currentTime, 4);
+    // 缓慢浮现，不打扰入静；尊重用户的 40Hz 开关
+    this.layers.L4.gain.setTargetAtTime(this._gammaOn ? 1 : 0, ctx.currentTime, 4);
   };
+
+  // 40Hz 铺底开关（用户可选）
+  MusicEngine.prototype.setGammaOn = function (on) {
+    this._gammaOn = !!on;
+    try { localStorage.setItem('sutra_gamma40', this._gammaOn ? '1' : '0'); } catch (e) {}
+    this._applyGates();
+  };
+  MusicEngine.prototype.getGammaOn = function () { return this._gammaOn !== false; };
 
   MusicEngine.prototype.start = function () {
     if (this.playing) return;
@@ -354,7 +366,7 @@
     this.layers.L1.gain.setTargetAtTime(pg[1] * this._nature, t, 2.5);
     this.layers.L2.gain.setTargetAtTime(pg[2] * (1 - 0.7 * this._activity), t, 2.5);
     this.layers.L3.gain.setTargetAtTime(pg[3] * this._nature, t, 2.5);
-    this.layers.L4.gain.setTargetAtTime(1, t, 2.5);
+    this.layers.L4.gain.setTargetAtTime(this._gammaOn ? 1 : 0, t, 2.5);
     // 高音实际可触发 = 条件成立且非疾书；泉消/细雨按各自条件淡入淡出（疾书时 L3 总线已静音）
     this._chimeArmed = this._wantChime && this._nature > 0.45;
     if (this._springGain) this._springGain.gain.setTargetAtTime(0.016 * (this._wantSpring ? 1 : 0), t, 2.5);

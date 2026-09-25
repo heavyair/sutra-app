@@ -1204,6 +1204,9 @@
       // 背景音按钮显示当前开关状态（关=变灰）
       var mb = m.querySelector('[data-tool="music"]');
       if (mb) mb.classList.toggle('off', !state.musicOn);
+      // 40Hz 按钮显示当前开关状态（关=变灰）
+      var gb = m.querySelector('[data-tool="gamma40"]');
+      if (gb && music.getGammaOn) gb.classList.toggle('off', !music.getGammaOn());
       requestAnimationFrame(function () { m.classList.add('open'); });
     } else {
       closeTools();
@@ -1229,6 +1232,11 @@
         var on = music.toggle();
         state.musicOn = on;
         b.classList.toggle('off', !on);
+      } else if (t === 'gamma40') {
+        // 40Hz 铺底：独立开关，默认开，记住选择
+        var g = music.getGammaOn();
+        music.setGammaOn(!g);
+        b.classList.toggle('off', g);
       } else if (t === 'view') {
         openWorkLocal();
       } else if (t === 'share') {
