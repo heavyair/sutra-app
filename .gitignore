@@ -5,3 +5,7 @@ backend/__pycache__/
 backend/sutra.db
 certs/*.key
 .env
+
+# mobile 打包工程
+mobile/www/
+mobile/node_modules/

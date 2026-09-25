@@ -1,0 +1,1 @@
+{"dependencies":{"@capacitor/android":"^6.1.0","@capacitor/cli":"^6.1.0","@capacitor/core":"^6.1.0"},"description":"抄经 App · Capacitor 打包工程（Android / iOS）","name":"sutra-app-mobile","private":true,"scripts":{"build:android":"npm run sync && npx cap sync android","sync":"bash scripts/sync-www.sh"},"version":"1.0.0"}

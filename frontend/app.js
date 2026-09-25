@@ -8,6 +8,15 @@
 (function () {
   'use strict';
 
+  // App 打包（Capacitor）时页面跑在本地 file/capacitor 域，API 必须走远端绝对地址；
+  // 浏览器直连时保持同源相对路径，行为不变。
+  var API_BASE = (function () {
+    try {
+      if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) return 'https://scri.arcai.com';
+    } catch (e) {}
+    return '';
+  })();
+
   var FONTS = [
     { id: 'kaiti', name: '楷书', desc: '端正楷则 · 默认',
       stack: '"LXGW WenKai","Kaiti SC","STKaiti","KaiTi","楷体",serif',
@@ -305,7 +314,7 @@
     if (token) headers['Authorization'] = 'Bearer ' + token;
     var ak = getAnonKey();
     if (ak) headers['X-Anon-Key'] = ak;
-    return fetch(path, Object.assign({ headers: headers }, opts)).then(function (r) {
+    return fetch(API_BASE + path, Object.assign({ headers: headers }, opts)).then(function (r) {
       return r.json().then(function (body) {
         if (r.status === 401 && body && body.need_auth && !opts.noAuthRedirect) {
           try { localStorage.removeItem('sutra_token'); } catch (e) {}
@@ -1390,7 +1399,7 @@
         if (ak) headers['X-Anon-Key'] = ak;
         var t = getToken();
         if (t) headers['Authorization'] = 'Bearer ' + t;
-        fetch('/api/works/' + state.work.id + '/audio', { method: 'POST', headers: headers, body: fd })
+        fetch(API_BASE + '/api/works/' + state.work.id + '/audio', { method: 'POST', headers: headers, body: fd })
           .catch(function () {});
       });
     } catch (e) {}
@@ -1973,7 +1982,7 @@
     if (state.audioBlobUrl) { try { URL.revokeObjectURL(state.audioBlobUrl); } catch (e) {} state.audioBlobUrl = null; }
     if (!local && w.has_audio) {
       au.removeAttribute('src');
-      var audioUrl = '/api/works/' + w.id + '/audio' + (share ? '?share=' + encodeURIComponent(share) : '');
+      var audioUrl = API_BASE + '/api/works/' + w.id + '/audio' + (share ? '?share=' + encodeURIComponent(share) : '');
       // <audio> 发不出 Authorization / X-Anon-Key，带鉴权取 blob 再播（登录用户私作直连会 404）
       var ah = {};
       var at = getToken(); if (at) ah['Authorization'] = 'Bearer ' + at;
