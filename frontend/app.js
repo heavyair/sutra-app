@@ -227,7 +227,7 @@
   // 各屏的功能按钮清单（书写屏用自己的工具菜单，不走全局；顶栏已全部移除）
   function toolsFor(id) {
     if (id === 'screen-library') {
-      return getToken() ? [] : [{ label: '登录', onClick: gotoLogin }];
+      return getToken() ? [{ label: '上传经书', onClick: openUploadDialog }] : [{ label: '登录', onClick: gotoLogin }];
     }
     if (id === 'screen-work') {
       return workScreenTools();
@@ -491,10 +491,14 @@
       .filter(function (s) { return state.filter === 'all' || s.tradition === state.filter; })
       .forEach(function (s) {
         var li = document.createElement('li');
-        var trad = s.tradition === 'buddhist' ? '佛经' : '道经';
+        var trad = s.tradition === 'buddhist' ? '佛经' : (s.tradition === 'taoist' ? '道经' : '自传');
         var todo = s.char_count === 0 ? '<span class="badge-todo">待补充全文</span>' : '';
+        var upBadge = '';
+        if (s.source === 'upload') {
+          upBadge = '<span class="badge-upload">自传 · ' + (s.visibility === 'public' ? '公开' : '私有') + (s.mine ? ' · 我的' : '') + '</span>';
+        }
         li.innerHTML =
-          '<div class="sutra-title">' + escapeHtml(s.title) + todo + '</div>' +
+          '<div class="sutra-title">' + escapeHtml(s.title) + todo + upBadge + '</div>' +
           '<div class="sutra-meta">' + trad + ' · ' + s.char_count + '字 · ♥ ' + s.like_count + '</div>' +
           '<div class="sutra-intro">' + escapeHtml(s.intro || '') + '</div>';
         var dc = s.dedication_count || 0;
@@ -507,6 +511,26 @@
             openDedicationWall(s.id, s.title);
           });
           li.appendChild(db);
+        }
+        if (s.mine && s.source === 'upload') {
+          var acts = document.createElement('div');
+          acts.className = 'sutra-own-actions';
+          var tg = document.createElement('button');
+          tg.className = 'btn-mini';
+          tg.textContent = s.visibility === 'public' ? '设为私有' : '设为公开';
+          tg.addEventListener('click', function (e) {
+            e.stopPropagation();
+            toggleSutraVisibility(s.id, s.visibility === 'public' ? 'private' : 'public');
+          });
+          var del = document.createElement('button');
+          del.className = 'btn-mini danger';
+          del.textContent = '删除';
+          del.addEventListener('click', function (e) {
+            e.stopPropagation();
+            deleteSutra(s.id, s.title);
+          });
+          acts.appendChild(tg); acts.appendChild(del);
+          li.appendChild(acts);
         }
         li.addEventListener('click', function () {
           if (li.dataset.busy) return;           // 防重复点击
@@ -521,6 +545,101 @@
         });
         list.appendChild(li);
       });
+  }
+
+  /* ---------- 3a. 上传经书（登录用户，每人限 1GB） ---------- */
+  function fmtBytes(n) {
+    if (n >= 1024 * 1024 * 1024) return (n / 1073741824).toFixed(2) + ' GB';
+    if (n >= 1024 * 1024) return (n / 1048576).toFixed(1) + ' MB';
+    if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
+    return n + ' B';
+  }
+  var uploadVis = 'public';
+  function openUploadDialog() {
+    if (!getToken()) { gotoLogin(); return; }
+    $('upload-title').value = '';
+    $('upload-intro').value = '';
+    $('upload-content').value = '';
+    $('upload-file').value = '';
+    $('upload-pledge').checked = false;
+    uploadVis = 'public';
+    document.querySelectorAll('#upload-vis .chip').forEach(function (c) {
+      c.classList.toggle('active', c.dataset.vis === 'public');
+    });
+    $('upload-quota').textContent = '上传空间：加载中…';
+    api('/api/sutras/quota', { noAuthRedirect: true }).then(function (res) {
+      if (res && res.ok) {
+        $('upload-quota').textContent = '上传空间：已用 ' + fmtBytes(res.used_bytes) + ' / ' + fmtBytes(res.limit_bytes);
+      } else {
+        $('upload-quota').textContent = '';
+      }
+    }).catch(function () { $('upload-quota').textContent = ''; });
+    $('upload-overlay').classList.remove('hidden');
+  }
+  function closeUploadDialog() { $('upload-overlay').classList.add('hidden'); }
+  document.querySelectorAll('#upload-vis .chip').forEach(function (c) {
+    c.addEventListener('click', function () {
+      document.querySelectorAll('#upload-vis .chip').forEach(function (x) { x.classList.remove('active'); });
+      c.classList.add('active');
+      uploadVis = c.dataset.vis;
+    });
+  });
+  $('upload-file').addEventListener('change', function () {
+    var f = this.files && this.files[0];
+    if (!f) return;
+    if (f.size > 10 * 1024 * 1024) { alert('文件太大（限 10MB）'); this.value = ''; return; }
+    var rd = new FileReader();
+    rd.onload = function () {
+      $('upload-content').value = String(rd.result || '');
+      if (!$('upload-title').value) {
+        $('upload-title').value = f.name.replace(/\.(txt|text)$/i, '').slice(0, 50);
+      }
+    };
+    rd.readAsText(f, 'utf-8');
+  });
+  $('btn-upload-cancel').addEventListener('click', closeUploadDialog);
+  $('btn-upload-confirm').addEventListener('click', function () {
+    var title = $('upload-title').value.trim();
+    var content = $('upload-content').value.trim();
+    var intro = $('upload-intro').value.trim();
+    var pledge = $('upload-pledge').checked;
+    if (!title) { alert('请填写经名'); return; }
+    if (!content) { alert('请填写经文内容或导入 .txt 文件'); return; }
+    if (!pledge) { alert('请勾选向善承诺'); return; }
+    var btn = $('btn-upload-confirm');
+    btn.disabled = true; btn.textContent = '上传中…';
+    api('/api/sutras', {
+      method: 'POST',
+      body: JSON.stringify({ title: title, content: content, intro: intro, visibility: uploadVis, pledge: true })
+    }).then(function (res) {
+      btn.disabled = false; btn.textContent = '上传';
+      if (!res || !res.ok) { alert((res && res.message) || '上传失败，请重试'); return; }
+      closeUploadDialog();
+      state.filter = 'custom';
+      document.querySelectorAll('#screen-library .chip').forEach(function (c) {
+        c.classList.toggle('active', c.dataset.trad === 'custom');
+      });
+      loadLibrary();
+    }).catch(function () {
+      btn.disabled = false; btn.textContent = '上传';
+      alert('上传失败，请重试');
+    });
+  });
+  function toggleSutraVisibility(id, vis) {
+    api('/api/sutra/' + encodeURIComponent(id), {
+      method: 'PATCH',
+      body: JSON.stringify({ visibility: vis })
+    }).then(function (res) {
+      if (!res || !res.ok) { alert((res && res.message) || '操作失败'); return; }
+      loadLibrary();
+    });
+  }
+  function deleteSutra(id, title) {
+    if (!confirm('确定删除《' + title + '》吗？删除后不可恢复。')) return;
+    api('/api/sutra/' + encodeURIComponent(id), { method: 'DELETE' }).then(function (res) {
+      if (!res || !res.ok) { alert((res && res.message) || '删除失败'); return; }
+      loadLibrary();
+    });
   }
 
   document.querySelectorAll('#screen-library .chip').forEach(function (chip) {

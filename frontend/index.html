@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1a1611">
 <title>抄经 · 静心</title>
-<link rel="stylesheet" href="styles.css?v=53">
+<link rel="stylesheet" href="styles.css?v=54">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@600&display=swap">
 </head>
@@ -56,6 +56,7 @@
       <button class="chip active" data-trad="all">全部</button>
       <button class="chip" data-trad="buddhist">佛经</button>
       <button class="chip" data-trad="taoist">道经</button>
+      <button class="chip" data-trad="custom">上传</button>
     </div>
     <ul id="sutra-list" class="sutra-list"></ul>
 
@@ -217,6 +218,33 @@
   </div>
 </div>
 
+<!-- 上传经书（登录用户） -->
+<div id="upload-overlay" class="picker-overlay hidden">
+  <div class="picker-card upload-card">
+    <h3>📜 上传经书</h3>
+    <p class="picker-hint upload-pledge">请上传导人向善的经文，以经劝善。勿传违法违规、淫秽暴力、广告或侵犯他人版权的内容，违规将被删除。</p>
+    <label class="dedicate-label2" for="upload-title">经名</label>
+    <input id="upload-title" class="text-input" maxlength="50" placeholder="如：父母恩重难报经">
+    <label class="dedicate-label2" for="upload-intro">简介（选填）</label>
+    <input id="upload-intro" class="text-input" maxlength="200" placeholder="一句话介绍这部经">
+    <label class="dedicate-label2" for="upload-content">经文内容</label>
+    <textarea id="upload-content" class="text-input upload-textarea" placeholder="粘贴经文全文，或从 .txt 文件导入"></textarea>
+    <label class="upload-file-label" for="upload-file">📄 从 .txt 文件导入</label>
+    <input id="upload-file" type="file" accept=".txt,.text,text/plain" class="hidden">
+    <div class="dedicate-label2">可见性</div>
+    <div id="upload-vis" class="dedicate-kinds">
+      <button data-vis="public" class="chip active">公开</button>
+      <button data-vis="private" class="chip">私有</button>
+    </div>
+    <label class="upload-check"><input id="upload-pledge" type="checkbox"> 我承诺所传经文用于劝人向善</label>
+    <p id="upload-quota" class="picker-hint"></p>
+    <div class="inkplay-bar">
+      <button id="btn-upload-confirm" class="btn-primary">上传</button>
+      <button id="btn-upload-cancel" class="btn-ghost">取消</button>
+    </div>
+  </div>
+</div>
+
 <!-- 回向仪式：读文 + 化烟 -->
 <div id="ceremony-overlay" class="hidden">
   <div class="ceremony-veil"></div>
@@ -235,8 +263,8 @@
 <!-- 打印专用：屏幕上隐藏，打印时显示 -->
 <div id="print-sheet"></div>
 
-<script src="music.js?v=53"></script>
-<script src="writing.js?v=53"></script>
-<script src="app.js?v=53"></script>
+<script src="music.js?v=54"></script>
+<script src="writing.js?v=54"></script>
+<script src="app.js?v=54"></script>
 </body>
 </html>

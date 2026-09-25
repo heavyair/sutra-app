@@ -434,3 +434,19 @@ button:active { transform: scale(0.97); }
   opacity: .85; }
 .ded-ashmore { font-size: 11px; color: #8a6d2f; align-self: center; margin-left: 4px; }
 .ded-foot { margin-top: 8px; font-size: 12px; color: #9a8a6a; letter-spacing: 1px; }
+
+/* ---- 上传经书（v54） ---- */
+.upload-card { width: min(92vw, 440px); max-height: 88vh; overflow-y: auto; }
+.upload-pledge { color: #8a6d2f; }
+.upload-textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
+.upload-file-label { display: inline-block; margin: 6px 0 2px; font-size: 14px; color: #8a6d2f;
+  border: 1px dashed #b49b5e; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+.upload-check { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0 2px;
+  font-size: 14px; color: var(--ink); cursor: pointer; }
+.upload-check input { margin-top: 3px; width: 16px; height: 16px; }
+.badge-upload { display: inline-block; font-size: 11px; border: 1px solid #b49b5e; color: #8a6d2f;
+  border-radius: 6px; padding: 1px 6px; margin-left: 6px; vertical-align: 1px; }
+.sutra-own-actions { margin-top: 6px; display: flex; gap: 8px; }
+.btn-mini { font-size: 12px; padding: 5px 10px; border-radius: 8px; border: 1px solid #b49b5e;
+  background: transparent; color: #8a6d2f; }
+.btn-mini.danger { border-color: #b05c5c; color: #b05c5c; }

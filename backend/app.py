@@ -107,6 +107,19 @@ def init_db():
     conn = get_db()
     conn.executescript(schema)
 
+    # 存量库迁移：sutras 表补上传字段（新库已由 schema 建好；ALTER 不允许非常量默认值）
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(sutras)").fetchall()}
+    for col, ddl in [
+        ("user_id", "INTEGER"),
+        ("visibility", "TEXT DEFAULT 'public'"),
+        ("source", "TEXT DEFAULT 'seed'"),
+        ("created_at", "TEXT"),
+        ("size_bytes", "INTEGER DEFAULT 0"),
+    ]:
+        if col not in cols:
+            conn.execute(f"ALTER TABLE sutras ADD COLUMN {col} {ddl}")
+    conn.commit()
+
     # 种子经文
     row = conn.execute("SELECT COUNT(*) AS c FROM sutras").fetchone()
     if row["c"] == 0:
@@ -585,17 +598,137 @@ def me():
 
 @app.route("/api/sutras")
 def sutra_list():
+    u = current_user()
+    uid = u["id"] if u else -1
     conn = get_db()
     rows = conn.execute(
         "SELECT s.id, s.title, s.tradition, s.intro, s.like_count,"
         "       CASE WHEN s.full_text IS NULL THEN 0 ELSE length(s.full_text) END AS char_count,"
+        "       COALESCE(s.source, 'seed') AS source,"
+        "       COALESCE(s.visibility, 'public') AS visibility,"
+        "       CASE WHEN s.user_id = ? THEN 1 ELSE 0 END AS mine,"
         "       (SELECT COUNT(*) FROM works w WHERE w.sutra_id = s.id"
         "        AND w.dedicated_at IS NOT NULL"
         "        AND w.dedication_expires_at > datetime('now')) AS dedication_count"
-        " FROM sutras s ORDER BY s.tradition, s.title"
+        " FROM sutras s"
+        " WHERE s.user_id IS NULL OR s.visibility = 'public' OR s.user_id = ?"
+        " ORDER BY s.tradition, s.title",
+        (uid, uid),
     ).fetchall()
     conn.close()
     return jsonify({"ok": True, "sutras": [dict(r) for r in rows]})
+
+
+# 用户上传经书：每人限 1GB
+USER_SUTRA_QUOTA = 1024 * 1024 * 1024
+USER_SUTRA_MAX_ONE = 10 * 1024 * 1024  # 单部经文限 10MB
+
+
+def _user_sutra_used(conn, user_id):
+    row = conn.execute(
+        "SELECT COALESCE(SUM(size_bytes), 0) AS used FROM sutras WHERE user_id = ?", (user_id,)
+    ).fetchone()
+    return row["used"] or 0
+
+
+@app.route("/api/sutras/quota")
+def sutra_quota():
+    user, err = require_user()
+    if err:
+        return err
+    conn = get_db()
+    used = _user_sutra_used(conn, user["id"])
+    conn.close()
+    return jsonify({"ok": True, "used_bytes": used, "limit_bytes": USER_SUTRA_QUOTA})
+
+
+@app.route("/api/sutras", methods=["POST"])
+def sutra_upload():
+    """登录用户上传经书：可选公开/私有，须勾选向善承诺。"""
+    user, err = require_user()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    title = (data.get("title") or "").strip()
+    content = (data.get("content") or "").strip()
+    intro = (data.get("intro") or "").strip()
+    visibility = data.get("visibility") or "private"
+    pledge = data.get("pledge")
+    if not pledge:
+        return jsonify({"ok": False, "message": "请勾选向善承诺"}), 400
+    if not title or len(title) > 50:
+        return jsonify({"ok": False, "message": "经名需在 1-50 字之间"}), 400
+    if not content:
+        return jsonify({"ok": False, "message": "经文内容不能为空"}), 400
+    if len(intro) > 200:
+        return jsonify({"ok": False, "message": "简介最多 200 字"}), 400
+    if visibility not in ("public", "private"):
+        visibility = "private"
+    size_bytes = len(content.encode("utf-8"))
+    if size_bytes > USER_SUTRA_MAX_ONE:
+        return jsonify({"ok": False, "message": "单部经文不能超过 10MB"}), 413
+    conn = get_db()
+    used = _user_sutra_used(conn, user["id"])
+    if used + size_bytes > USER_SUTRA_QUOTA:
+        conn.close()
+        return jsonify({"ok": False, "message": "上传空间已满（每人限 1GB）"}), 413
+    sid = "u_" + secrets.token_hex(6)
+    conn.execute(
+        "INSERT INTO sutras (id, title, tradition, intro, full_text, music_config, like_count,"
+        " user_id, visibility, source, created_at, size_bytes)"
+        " VALUES (?, ?, 'custom', ?, ?, '{}', 0, ?, ?, 'upload', datetime('now'), ?)",
+        (sid, title, intro, content, user["id"], visibility, size_bytes),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "id": sid})
+
+
+@app.route("/api/sutra/<sutra_id>", methods=["PATCH"])
+def sutra_patch(sutra_id):
+    """上传者切换自己经书的公开/私有。"""
+    user, err = require_user()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    visibility = data.get("visibility")
+    if visibility not in ("public", "private"):
+        return jsonify({"ok": False, "message": "visibility 须为 public/private"}), 400
+    conn = get_db()
+    row = conn.execute(
+        "SELECT user_id, source FROM sutras WHERE id = ?", (sutra_id,)
+    ).fetchone()
+    if not row or row["source"] != "upload" or row["user_id"] != user["id"]:
+        conn.close()
+        return jsonify({"ok": False, "message": "只能修改自己上传的经书"}), 403
+    conn.execute("UPDATE sutras SET visibility = ? WHERE id = ?", (visibility, sutra_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/sutra/<sutra_id>", methods=["DELETE"])
+def sutra_delete(sutra_id):
+    """上传者删除自己的经书（已有抄经作品时不允许）。"""
+    user, err = require_user()
+    if err:
+        return err
+    conn = get_db()
+    row = conn.execute(
+        "SELECT user_id, source FROM sutras WHERE id = ?", (sutra_id,)
+    ).fetchone()
+    if not row or row["source"] != "upload" or row["user_id"] != user["id"]:
+        conn.close()
+        return jsonify({"ok": False, "message": "只能删除自己上传的经书"}), 403
+    w = conn.execute("SELECT COUNT(*) AS c FROM works WHERE sutra_id = ?", (sutra_id,)).fetchone()
+    if w["c"]:
+        conn.close()
+        return jsonify({"ok": False, "message": "这部经已有抄经作品，请先删除作品"}), 400
+    conn.execute("DELETE FROM likes WHERE sutra_id = ?", (sutra_id,))
+    conn.execute("DELETE FROM sutras WHERE id = ?", (sutra_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
 
 
 @app.route("/api/sutra/<sutra_id>/dedications")
@@ -643,6 +776,11 @@ def sutra_detail(sutra_id):
     if not row:
         return jsonify({"ok": False, "message": "经文不存在"}), 404
     d = dict(row)
+    # 私有上传经书仅上传者可见
+    if (d.get("source") or "seed") == "upload" and (d.get("visibility") or "public") == "private":
+        u = current_user()
+        if not u or u["id"] != d.get("user_id"):
+            return jsonify({"ok": False, "message": "这部经书是私有的"}), 403
     d["music_config"] = json.loads(d["music_config"] or "{}")
     return jsonify({"ok": True, "sutra": d})
 

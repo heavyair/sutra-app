@@ -22,11 +22,16 @@ CREATE TABLE IF NOT EXISTS invite_codes (
 CREATE TABLE IF NOT EXISTS sutras (
   id          TEXT PRIMARY KEY,
   title       TEXT NOT NULL,
-  tradition   TEXT NOT NULL,      -- buddhist | taoist
+  tradition   TEXT NOT NULL,      -- buddhist | taoist | custom（用户上传）
   intro       TEXT,
   full_text   TEXT,               -- 金刚经等长经暂为 NULL，待补充
   music_config TEXT,              -- JSON：{root_midi, tempo_bpm, timbre, mood}
-  like_count  INTEGER DEFAULT 0
+  like_count  INTEGER DEFAULT 0,
+  user_id     INTEGER,            -- 上传者（种子经文为 NULL）
+  visibility  TEXT DEFAULT 'public', -- public | private（仅上传者可见）
+  source      TEXT DEFAULT 'seed',   -- seed | upload
+  created_at  TEXT DEFAULT (datetime('now')),
+  size_bytes  INTEGER DEFAULT 0  -- full_text 字节数（配额用）
 );
 
 -- likes: 点赞记录（同一用户对同一经文只记一次）
