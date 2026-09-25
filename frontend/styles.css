@@ -191,7 +191,7 @@ button:active { transform: scale(0.97); }
 }
 .picker-overlay.hidden { display: none; }
 /* 回向/放映/回放等弹窗盖住全局工具按钮（完成屏除外：它的功能按钮就在全局工具按钮里） */
-#dedicate-overlay, #inkplay-overlay, #replay-overlay { z-index: 70; }
+#dedicate-overlay, #inkplay-overlay, #sheetplay-overlay, #replay-overlay { z-index: 70; }
 .picker-card {
   background: var(--bg-soft); border: 1px solid var(--line); border-radius: 20px;
   padding: 24px 20px; width: 100%; max-width: 420px;
@@ -379,6 +379,14 @@ button:active { transform: scale(0.97); }
 .inkplay-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .inkplay-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
 #inkplay-label { font-size: 14px; color: var(--ink-dim); }
+
+/* 整纸放映 */
+.sheetplay-card { width: min(96vw, 560px); max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; }
+.sheetplay-scroll { overflow-y: auto; flex: 1; min-height: 0; -webkit-overflow-scrolling: touch; }
+.sheetplay-sheet { margin: 0 auto 12px; }
+.sheetplay-sheet .sheet-cell canvas { width: 100%; height: 100%; display: block; }
+.sheetplay-sheet .sheet-cell.playing { outline: 2px solid #b98a2f; outline-offset: -2px; border-radius: 3px; background: rgba(185,138,47,.10); }
+#sheetplay-label { font-size: 14px; color: var(--ink-dim); }
 
 /* 回向 */
 .dedication-block { margin: 10px 16px 0; padding: 12px 14px; border-radius: 10px;

@@ -1967,6 +1967,7 @@
     if (!dedicated && !finished) items.push({ label: '续写', onClick: continueWork });
     if (!dedicated && w.chars_done > 0) {
       items.push({ label: '放映', onClick: openInkPlay });
+      items.push({ label: '整纸放映', onClick: openSheetPlay });
       items.push({ label: 'PDF', onClick: printWork });
     }
     if (isOwner && getToken()) items.push({ label: '分享', onClick: shareViewedWork });
@@ -2766,15 +2767,39 @@
   });
 
   /* ---------- 落笔放映：整部作品按原节奏依次重演 ---------- */
-  var inkplayPad = null, inkplayActive = false, inkplayLiveMusic = false, inkplayCancel = null;
+  var inkplayPad = null, inkplayActive = false, inkplayCancel = null, inkplayStopAudio = null;
 
-  function startInkplayLiveMusic() {
-    // 没有录音时：现场生成写字时的同一套音乐（用户选"静"则不开）
+  // 放映配乐：优先放写字时录下的音乐；没有录音则现场生成同一套音乐（用户选"静"则不开）。
+  // 返回停止函数，供关闭放映时调用。
+  function playWorkAudio() {
+    var liveMusic = false;
+    function startLive() {
+      try {
+        var want = music.getSavedBgMode ? music.getSavedBgMode() : 'strings';
+        if (want !== 'silent' && !state.musicOn) { music.start(); state.musicOn = true; liveMusic = true; }
+        music.setAudible(true);
+      } catch (e) {}
+    }
     try {
-      var want = music.getSavedBgMode ? music.getSavedBgMode() : 'strings';
-      if (want !== 'silent' && !state.musicOn) { music.start(); state.musicOn = true; inkplayLiveMusic = true; }
-      music.setAudible(true);
-    } catch (e) {}
+      var au = $('workview-audio');
+      var w = state.workData && state.workData.work;
+      if (w && w.has_audio && au && au.src) {
+        try { au.currentTime = 0; } catch (e0) {}
+        var p = au.play();
+        if (p && p.catch) p.catch(function () { startLive(); });
+      } else {
+        startLive();
+      }
+    } catch (e) { startLive(); }
+    return function () {
+      try { var au = $('workview-audio'); if (au) au.pause(); } catch (e2) {}
+      if (liveMusic) {
+        // 现场音乐是我们开的，关掉并还原
+        liveMusic = false;
+        try { music.setAudible(false); } catch (e3) {}
+        try { if (state.musicOn) { music.stop(); state.musicOn = false; } } catch (e4) {}
+      }
+    };
   }
 
   function openInkPlay() {
@@ -2794,17 +2819,7 @@
     inkplayPad.setFont(state.font.stack);
     inkplayActive = true;
     // 声音：优先放写字时录下的音乐；没有录音则现场生成
-    try {
-      var au = $('workview-audio');
-      var w = state.workData && state.workData.work;
-      if (w && w.has_audio && au && au.src) {
-        try { au.currentTime = 0; } catch (e0) {}
-        var p = au.play();
-        if (p && p.catch) p.catch(function () { startInkplayLiveMusic(); });
-      } else {
-        startInkplayLiveMusic();
-      }
-    } catch (e) { startInkplayLiveMusic(); }
+    inkplayStopAudio = playWorkAudio();
     var idx = 0;
     var step = function () {
       if (!inkplayActive) return;
@@ -2825,16 +2840,164 @@
   function closeInkPlay() {
     inkplayActive = false;
     if (inkplayCancel) { inkplayCancel(); inkplayCancel = null; }
-    try { var au = $('workview-audio'); if (au) au.pause(); } catch (e) {}
-    if (inkplayLiveMusic) {
-      // 现场音乐是我们开的，关掉并还原
-      inkplayLiveMusic = false;
-      try { music.setAudible(false); } catch (e) {}
-      try { if (state.musicOn) { music.stop(); state.musicOn = false; } } catch (e2) {}
-    }
+    if (inkplayStopAudio) { try { inkplayStopAudio(); } catch (e) {} inkplayStopAudio = null; }
     $('inkplay-overlay').classList.add('hidden');
   }
   $('btn-inkplay-close').addEventListener('click', closeInkPlay);
+
+  /* ---------- 整纸放映：一页纸上按顺序逐字重演笔画 ---------- */
+  var sheetplayActive = false, sheetplayCancel = null, sheetplayStopAudio = null;
+  var SHEETPLAY_OUT = 200; // 字格画布分辨率（CSS 缩放显示）
+
+  // 在字格画布上逐段重演一字：取景与 renderSheetCell 同管线（通用格裁剪），
+  // 播完静止态与整纸视图一致。返回取消函数。
+  function playSheetChar(canvas, it, fontStack, side, onDone) {
+    var ch = it.ch;
+    var rec = (it.saved && it.saved.strokes) || {};
+    var box = it.box || WritingPad.glyphBox(ch, fontStack, rec.ar);
+    var W = box.W, H = box.H;
+    var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    var c2 = cv.getContext('2d');
+    c2.lineCap = c2.lineJoin = 'round';
+    var bcx = box.bx + box.bw / 2, bcy = box.by + box.bh / 2;
+    var sx = Math.max(0, Math.min(W - side, Math.round(bcx - side / 2)));
+    var sy = Math.max(0, Math.min(H - side, Math.round(bcy - side / 2)));
+    var OUT = SHEETPLAY_OUT;
+    var ctx = canvas.getContext('2d');
+    function blit() {
+      ctx.clearRect(0, 0, OUT, OUT);
+      ctx.drawImage(cv, sx, sy, side, side, 0, 0, OUT, OUT);
+    }
+    var timer = null, raf = 0, done = false;
+    function finish() {
+      if (done) return; done = true;
+      blit();
+      if (it.trail) { // 尾随标点：贴右下角（与整纸同比例同位置）
+        ctx.save();
+        ctx.font = (OUT * 0.36) + 'px ' + box.fs;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#2b2118';
+        ctx.fillText(it.trail, OUT * 0.76, OUT * 0.78);
+        ctx.restore();
+      }
+      timer = setTimeout(onDone, 220);
+    }
+    if (rec.auto === 'punct') {
+      WritingPad.drawStatic(cv, rec, ch);
+      timer = setTimeout(finish, 450);
+    } else {
+      var fake = Object.create(WritingPad.prototype);
+      fake.ictx = c2;
+      fake.pen = rec.pen || 'maobi';
+      fake._bristleDist = 0;
+      fake._bristlePhase = Math.random() * Math.PI * 2;
+      var fr = WritingPad._fitRect(W, H, rec.ar || WritingPad._viewportAr());
+      var unit = Math.min(fr.dw, fr.dh) || 1;
+      var segs = [];
+      (rec.strokes || []).forEach(function (st) {
+        for (var i = 1; i < st.length; i++) segs.push([st[i - 1], st[i]]);
+      });
+      if (!segs.length) {
+        timer = setTimeout(finish, 200);
+      } else {
+        // 与 replayStrokes 同节奏：按原落笔时间推进，整字压缩到 1.2s 内
+        var t0 = segs[0][0][2];
+        var span = Math.max(1, segs[segs.length - 1][1][2] - t0);
+        var scale = span > 1200 ? 1200 / span : 1;
+        var rAF = window.requestAnimationFrame ||
+          function (fn) { return setTimeout(function () { fn(Date.now()); }, 16); };
+        var i = 0, start = null, guard = 0;
+        var draw = WritingPad.prototype._drawSegment;
+        (function frame(now) {
+          if (!sheetplayActive || done) return;
+          if (start === null) start = now;
+          var el = (now - start) / scale;
+          guard = 0;
+          while (i < segs.length && (segs[i][1][2] - t0) <= el && guard++ < 5000) {
+            var a = segs[i][0], b = segs[i][1];
+            draw.call(fake,
+              { x: fr.ox + a[0] * fr.dw, y: fr.oy + a[1] * fr.dh },
+              { x: fr.ox + b[0] * fr.dw, y: fr.oy + b[1] * fr.dh },
+              (b[3] || 0.03) * unit);
+            i++;
+          }
+          blit();
+          if (i < segs.length) {
+            raf = rAF(frame);
+          } else {
+            raf = 0;
+            finish();
+          }
+        })(window.performance && performance.now ? performance.now() : Date.now());
+      }
+    }
+    return function () {
+      done = true;
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (raf) {
+        if (window.cancelAnimationFrame) window.cancelAnimationFrame(raf);
+        else clearTimeout(raf);
+        raf = 0;
+      }
+    };
+  }
+
+  function openSheetPlay() {
+    var full = state.fullChars || state.chars || [];
+    var byPos = state.workCharsByPos || {};
+    var fontStack = (state.font && state.font.stack) || '';
+    var cells = [];
+    for (var i = 0; i < full.length; i++) {
+      var saved = byPos[i];
+      if (saved) cells.push({ pos: i, ch: saved.ch || full[i], saved: saved });
+    }
+    if (!cells.length) { alert('还没有写完的字'); return; }
+    var lay = sheetLayout(cells, fontStack, null);
+    var items = lay.items.filter(function (it) { return !it.ash; });
+    if (!items.length) { alert('还没有写完的字'); return; }
+    var grid = $('sheetplay-grid');
+    grid.innerHTML = '';
+    var cellEls = items.map(function (it) {
+      var d = document.createElement('div');
+      d.className = 'sheet-cell';
+      var cv = document.createElement('canvas');
+      cv.width = SHEETPLAY_OUT; cv.height = SHEETPLAY_OUT;
+      d.appendChild(cv);
+      grid.appendChild(d);
+      return { el: d, cv: cv };
+    });
+    $('sheetplay-scroll').scrollTop = 0;
+    $('sheetplay-overlay').classList.remove('hidden');
+    sheetplayActive = true;
+    sheetplayStopAudio = playWorkAudio();
+    var idx = 0;
+    var step = function () {
+      if (!sheetplayActive) return;
+      if (idx >= items.length) {
+        $('sheetplay-label').textContent = '放映结束 · 共 ' + items.length + ' 字';
+        sheetplayActive = false;
+        return;
+      }
+      var k = idx++;
+      var it = items[k], ce = cellEls[k];
+      ce.el.classList.add('playing');
+      try { ce.el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+      $('sheetplay-label').textContent = '第 ' + (k + 1) + ' 字 · ' + it.ch + '（' + (k + 1) + '/' + items.length + '）';
+      sheetplayCancel = playSheetChar(ce.cv, it, fontStack, lay.side, function () {
+        ce.el.classList.remove('playing');
+        step();
+      });
+    };
+    step();
+  }
+
+  function closeSheetPlay() {
+    sheetplayActive = false;
+    if (sheetplayCancel) { try { sheetplayCancel(); } catch (e) {} sheetplayCancel = null; }
+    if (sheetplayStopAudio) { try { sheetplayStopAudio(); } catch (e2) {} sheetplayStopAudio = null; }
+    $('sheetplay-overlay').classList.add('hidden');
+  }
+  $('btn-sheetplay-close').addEventListener('click', closeSheetPlay);
 
   /* ---------- 分享链接直达：#w=123&share=xxx ---------- */
   (function () {
