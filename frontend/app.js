@@ -1201,6 +1201,9 @@
     var m = $('tools-menu');
     if (m.classList.contains('hidden')) {
       m.classList.remove('hidden');
+      // 背景音按钮显示当前开关状态（关=变灰）
+      var mb = m.querySelector('[data-tool="music"]');
+      if (mb) mb.classList.toggle('off', !state.musicOn);
       requestAnimationFrame(function () { m.classList.add('open'); });
     } else {
       closeTools();
@@ -1210,7 +1213,7 @@
   document.querySelectorAll('.tool-item').forEach(function (b) {
     b.addEventListener('click', function () {
       var t = b.dataset.tool;
-      if (t === 'font' || t === 'music') {
+      if (t === 'font') {
         // 选项类工具：菜单内联展开，不关菜单、不弹新界面
         openToolPanel(t, b);
         return;
@@ -1221,6 +1224,11 @@
         if (state.musicOn) { music.stop(); state.musicOn = false; }
         try { music.stopRecording(); } catch (e) {}
         showScreen('screen-library');
+      } else if (t === 'music') {
+        // 背景音：只有开/关，没有场景和频率选择
+        var on = music.toggle();
+        state.musicOn = on;
+        b.classList.toggle('off', !on);
       } else if (t === 'view') {
         openWorkLocal();
       } else if (t === 'share') {
@@ -1245,8 +1253,7 @@
     panel.dataset.tool = t;
     var body = $('tool-panel-body');
     body.innerHTML = '';
-    if (t === 'music') renderMusicPanel(body);
-    else if (t === 'font') renderFontPanel(body);
+    if (t === 'font') renderFontPanel(body);
     panel.classList.remove('hidden');
   }
 
@@ -1284,36 +1291,6 @@
       if (pad) pad.setFont(f.stack);
       if (pad && !state.completing) pad.newChar(state.chars[state.charIndex]); // 新字体重画虚影
     });
-  }
-
-  // 背景音面板：第一版设计——9 场景 + 16 调制（含 Gamma 44Hz 选项），即时生效并记住选择
-  function renderMusicPanel(body) {
-    function section(label) {
-      var el = document.createElement('div');
-      el.className = 'pick-label';
-      el.textContent = label;
-      body.appendChild(el);
-    }
-    function chips(items, cur, onPick) {
-      var el = document.createElement('div');
-      el.className = 'chip-row';
-      items.forEach(function (it) {
-        var c = document.createElement('button');
-        c.className = 'chip' + (it.id === cur ? ' selected' : '');
-        c.textContent = it.name;
-        c.addEventListener('click', function () {
-          onPick(it.id);
-          Array.prototype.forEach.call(el.children, function (x) { x.classList.remove('selected'); });
-          c.classList.add('selected');
-        });
-        el.appendChild(c);
-      });
-      body.appendChild(el);
-    }
-    section('场景');
-    chips(MusicEngine.getScenes(), music.getScene(), function (id) { music.setScene(id); });
-    section('调制（可选）');
-    chips(MusicEngine.getModulations(), music.getModulation(), function (id) { music.setModulation(id); });
   }
 
   function hideOverlays() {
