@@ -1867,17 +1867,26 @@
       if (cancelled) return; // 取消时遮罩已收起
       var t0 = Date.now();
       while (i < jobs.length && Date.now() - t0 < 150) {
-        var src = sheetCellSrc(jobs[i], lay.side); // data-URL 字符串（buildPrintSheet 按字符串拼接）
-        if (src) imgs.push(src);
+        try {
+          var src = sheetCellSrc(jobs[i], lay.side); // data-URL 字符串（buildPrintSheet 按字符串拼接）
+          if (src) imgs.push(src);
+        } catch (re) {
+          ui.update('第 ' + (i + 1) + ' 字渲染失败：' + ((re && re.message) || re));
+          return;
+        }
         i++;
       }
       if (i < jobs.length) {
         ui.update('正在生成 PDF ' + i + ' / ' + jobs.length);
         setTimeout(chunk, 0);
       } else {
-        ui.hide();
-        buildPrintSheet(imgs);
-        setTimeout(doPrint, 300);
+        try {
+          ui.hide();
+          buildPrintSheet(imgs);
+          setTimeout(doPrint, 300);
+        } catch (pe) {
+          ui.update('PDF 生成失败：' + ((pe && pe.message) || pe));
+        }
       }
     }
     setTimeout(chunk, 50);
