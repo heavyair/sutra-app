@@ -590,3 +590,17 @@ button:active { transform: scale(0.97); }
 .loading-cancel { font-size: 13px; padding: 7px 26px; border-radius: 999px;
   border: 1px solid var(--line); background: transparent; color: var(--ink-dim); }
 .loading-cancel:active { background: rgba(0,0,0,.06); }
+
+/* PDF 就绪确认框（v92：移动端 window.print 需手势内同步调用） */
+.print-ready-overlay { position: fixed; inset: 0; z-index: 9999; background: rgba(12, 9, 5, .55);
+  display: flex; align-items: center; justify-content: center; }
+.print-ready-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 24px 28px; text-align: center; max-width: 80vw; }
+.print-ready-title { font-size: 16px; color: var(--ink); margin-bottom: 8px; }
+.print-ready-desc { font-size: 13px; color: var(--ink-dim); margin-bottom: 18px; }
+.print-ready-go { display: block; width: 100%; font-size: 15px; padding: 10px 0; border-radius: 999px;
+  border: none; background: var(--gold); color: #fff; margin-bottom: 10px; }
+.print-ready-go:active { opacity: .85; }
+.print-ready-cancel { font-size: 13px; padding: 7px 26px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent; color: var(--ink-dim); }
+.print-ready-cancel:active { background: rgba(0,0,0,.06); }

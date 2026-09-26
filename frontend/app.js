@@ -1821,9 +1821,10 @@
     ps.innerHTML = html + '</div>';
   }
 
-  // App 内 WebView 没有 window.print：走原生打印桥（系统打印对话框 → 存为 PDF）；
-  // 浏览器里保持 window.print()
-  function doPrint() {
+  // 渲染完成后：App 原生桥直接调（不需要手势）；旧 App 提示更新；
+  // 浏览器 window.print() 在移动端需要用户手势——分片渲染耗时已超过手势有效期，
+  // 因此弹确认按钮，让用户在新手势内同步触发打印。
+  function afterPrintReady() {
     try {
       if (window.AndroidPrint && typeof window.AndroidPrint.print === 'function') {
         window.AndroidPrint.print();
@@ -1834,7 +1835,26 @@
       alert('App 内打印需要更新到新版 App；也可以用手机浏览器打开再打印存为 PDF。');
       return;
     }
-    window.print();
+    showPrintReady();
+  }
+
+  // "PDF 已准备好"确认框：按钮点击是真实用户手势，同步调 window.print()
+  function showPrintReady() {
+    var ov = document.createElement('div');
+    ov.className = 'print-ready-overlay';
+    ov.innerHTML = '<div class="print-ready-card">' +
+      '<div class="print-ready-title">可以打印了</div>' +
+      '<div class="print-ready-desc">点下面按钮打开打印预览，再选“另存为 PDF”。</div>' +
+      '<button class="print-ready-go">打印 / 存为 PDF</button>' +
+      '<button class="print-ready-cancel">取消</button></div>';
+    document.body.appendChild(ov);
+    function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
+    ov.querySelector('.print-ready-cancel').addEventListener('click', close);
+    ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+    ov.querySelector('.print-ready-go').addEventListener('click', function () {
+      close();
+      try { window.print(); } catch (e) {}
+    });
   }
 
   function printWork() {
@@ -1854,7 +1874,7 @@
       var snap = (state.workImages || []).filter(Boolean);
       if (snap.length) {
         buildPrintSheet(snap);
-        setTimeout(doPrint, 300);
+        afterPrintReady();
         return;
       }
       alert('还没有写完的字'); return;
@@ -1883,7 +1903,7 @@
         try {
           ui.hide();
           buildPrintSheet(imgs);
-          setTimeout(doPrint, 300);
+          afterPrintReady();
         } catch (pe) {
           ui.update('PDF 生成失败：' + ((pe && pe.message) || pe));
         }

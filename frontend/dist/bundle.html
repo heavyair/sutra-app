@@ -5,7 +5,7 @@
 <script>
 /* 热更新引导（构建注入）：本地 localStorage 有新版 bundle 则直接载入 */
 (function(){
-  var V = 91;
+  var V = 92;
   window.__BUNDLE_V__ = V;
   function g(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
   function s(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
@@ -625,6 +625,20 @@ button:active { transform: scale(0.97); }
 .loading-cancel { font-size: 13px; padding: 7px 26px; border-radius: 999px;
   border: 1px solid var(--line); background: transparent; color: var(--ink-dim); }
 .loading-cancel:active { background: rgba(0,0,0,.06); }
+
+/* PDF 就绪确认框（v92：移动端 window.print 需手势内同步调用） */
+.print-ready-overlay { position: fixed; inset: 0; z-index: 9999; background: rgba(12, 9, 5, .55);
+  display: flex; align-items: center; justify-content: center; }
+.print-ready-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 24px 28px; text-align: center; max-width: 80vw; }
+.print-ready-title { font-size: 16px; color: var(--ink); margin-bottom: 8px; }
+.print-ready-desc { font-size: 13px; color: var(--ink-dim); margin-bottom: 18px; }
+.print-ready-go { display: block; width: 100%; font-size: 15px; padding: 10px 0; border-radius: 999px;
+  border: none; background: var(--gold); color: #fff; margin-bottom: 10px; }
+.print-ready-go:active { opacity: .85; }
+.print-ready-cancel { font-size: 13px; padding: 7px 26px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent; color: var(--ink-dim); }
+.print-ready-cancel:active { background: rgba(0,0,0,.06); }
 
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css">
@@ -4038,9 +4052,10 @@ button:active { transform: scale(0.97); }
     ps.innerHTML = html + '</div>';
   }
 
-  // App 内 WebView 没有 window.print：走原生打印桥（系统打印对话框 → 存为 PDF）；
-  // 浏览器里保持 window.print()
-  function doPrint() {
+  // 渲染完成后：App 原生桥直接调（不需要手势）；旧 App 提示更新；
+  // 浏览器 window.print() 在移动端需要用户手势——分片渲染耗时已超过手势有效期，
+  // 因此弹确认按钮，让用户在新手势内同步触发打印。
+  function afterPrintReady() {
     try {
       if (window.AndroidPrint && typeof window.AndroidPrint.print === 'function') {
         window.AndroidPrint.print();
@@ -4051,7 +4066,26 @@ button:active { transform: scale(0.97); }
       alert('App 内打印需要更新到新版 App；也可以用手机浏览器打开再打印存为 PDF。');
       return;
     }
-    window.print();
+    showPrintReady();
+  }
+
+  // "PDF 已准备好"确认框：按钮点击是真实用户手势，同步调 window.print()
+  function showPrintReady() {
+    var ov = document.createElement('div');
+    ov.className = 'print-ready-overlay';
+    ov.innerHTML = '<div class="print-ready-card">' +
+      '<div class="print-ready-title">可以打印了</div>' +
+      '<div class="print-ready-desc">点下面按钮打开打印预览，再选“另存为 PDF”。</div>' +
+      '<button class="print-ready-go">打印 / 存为 PDF</button>' +
+      '<button class="print-ready-cancel">取消</button></div>';
+    document.body.appendChild(ov);
+    function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
+    ov.querySelector('.print-ready-cancel').addEventListener('click', close);
+    ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+    ov.querySelector('.print-ready-go').addEventListener('click', function () {
+      close();
+      try { window.print(); } catch (e) {}
+    });
   }
 
   function printWork() {
@@ -4071,7 +4105,7 @@ button:active { transform: scale(0.97); }
       var snap = (state.workImages || []).filter(Boolean);
       if (snap.length) {
         buildPrintSheet(snap);
-        setTimeout(doPrint, 300);
+        afterPrintReady();
         return;
       }
       alert('还没有写完的字'); return;
@@ -4100,7 +4134,7 @@ button:active { transform: scale(0.97); }
         try {
           ui.hide();
           buildPrintSheet(imgs);
-          setTimeout(doPrint, 300);
+          afterPrintReady();
         } catch (pe) {
           ui.update('PDF 生成失败：' + ((pe && pe.message) || pe));
         }
