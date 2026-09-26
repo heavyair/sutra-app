@@ -546,11 +546,17 @@
       card.className = 'sutra-card';
       var dc = s.dedication_count || 0;
       card.innerHTML =
-        '<div class="sutra-card-title">《' + escapeHtml(s.title) + '》</div>' +
-        '<div class="sutra-card-meta">共 ' + (s.char_count || 0) + ' 字' +
-        '<span class="sutra-card-prog" data-sutra="' + escapeHtml(s.id) + '"></span>' +
-        (s.mine ? ' · 我上传的' : '') + '</div>' +
-        '<button class="sutra-card-dedicate link-quiet">🪷 回向' + (dc > 0 ? ' ' + dc : '') + '</button>';
+        '<div class="sutra-card-main">' +
+          '<div class="sutra-card-intro">' + escapeHtml(s.intro || '') + '</div>' +
+          '<div class="sutra-card-meta">共 ' + (s.char_count || 0) + ' 字' +
+          '<span class="sutra-card-prog" data-sutra="' + escapeHtml(s.id) + '"></span>' +
+          (s.mine ? ' · 我上传的' : '') + '</div>' +
+          '<button class="sutra-card-dedicate link-quiet">🪷 回向' + (dc > 0 ? ' ' + dc : '') + '</button>' +
+        '</div>' +
+        '<div class="sutra-card-side">' +
+          '<div class="sutra-card-title">' + escapeHtml(s.title) + '</div>' +
+          '<div class="sutra-card-seal">抄</div>' +
+        '</div>';
       card.addEventListener('click', function () { openSutra(s.id); });
       card.querySelector('.sutra-card-dedicate').addEventListener('click', function (e) {
         e.stopPropagation();
