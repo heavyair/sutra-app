@@ -1571,7 +1571,8 @@
     for (var k = 0; k < cells.length; k++) {
       var c = cells[k];
       if (c.ash || (isBurned && isBurned(c.pos))) { items.push({ pos: c.pos, ash: true }); continue; }
-      if (isPunct(c.ch)) continue;
+      // 叹号/问号/破折号/省略号算一个字（独占一格）；其余小标点不占格，贴在上一个字格右下角
+      if (isPunct(c.ch) && !WritingPad.isFullPunct(c.ch)) continue;
       var saved = c.saved; if (!saved) continue;
       var ar = (saved.strokes && saved.strokes.ar) || null;
       var bk = c.ch + '|' + (ar || '');
@@ -1579,7 +1580,7 @@
       if (b.bw > side) side = b.bw;
       if (b.bh > side) side = b.bh;
       var trail = null, nx = cells[k + 1];
-      if (nx && !nx.ash && nx.pos === c.pos + 1 && isPunct(nx.ch) && nx.saved) trail = nx.ch;
+      if (nx && !nx.ash && nx.pos === c.pos + 1 && isPunct(nx.ch) && !WritingPad.isFullPunct(nx.ch) && nx.saved) trail = nx.ch;
       items.push({ pos: c.pos, ch: c.ch, saved: saved, box: b, trail: trail });
     }
     side = side * 1.5 || 200; // 四周各留 25%
@@ -2909,17 +2910,23 @@
       ctx.drawImage(cv, sx, sy, side, side, 0, 0, OUT, OUT);
     }
     var timer = null, raf = 0, done = false;
+    var isFullP = rec.auto === 'punct' && WritingPad.isFullPunct(ch);
+    if (isFullP) {
+      // 叹号/问号/破折号/省略号算一个字：整格直接画满，停留后进下一个
+      var _fc = WritingPad.renderFullPunctCell(ch, fontStack, OUT);
+      ctx.clearRect(0, 0, OUT, OUT);
+      ctx.drawImage(_fc, 0, 0, OUT, OUT);
+      if (it.trail) WritingPad.stampTrailPunct(ctx, it.trail, fontStack, OUT);
+      timer = setTimeout(function () { if (!done) { done = true; onDone(); } }, 450);
+      return function () {
+        done = true;
+        if (timer) { clearTimeout(timer); timer = null; }
+      };
+    }
     function finish() {
       if (done) return; done = true;
       blit();
-      if (it.trail) { // 尾随标点：贴右下角（与整纸同比例同位置，锚点最右安全位）
-        ctx.save();
-        ctx.font = (OUT * 0.32) + 'px ' + box.fs;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#2b2118';
-        ctx.fillText(it.trail, OUT * 0.83, OUT * 0.83);
-        ctx.restore();
-      }
+      if (it.trail) WritingPad.stampTrailPunct(ctx, it.trail, fontStack, OUT); // 尾随小标点：按各自墨宽定位
       timer = setTimeout(onDone, 220);
     }
     if (rec.auto === 'punct') {

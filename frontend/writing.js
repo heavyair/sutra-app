@@ -627,10 +627,93 @@
     }
   };
 
+  /* 标点分类：叹号/问号/破折号/省略号算一个字（独占一格）；
+   * 其余标点（逗号/句号/顿号/分号/冒号等）为小标点，不占格，贴在上一个字格右下角。 */
+  WritingPad.FULL_PUNCT_RE = /[！？—…]/;
+  WritingPad.isFullPunct = function (ch) { return WritingPad.FULL_PUNCT_RE.test(ch || ''); };
+
+  /* 量标点墨迹包围盒：字号 px 下，相对 fillText(ch,0,0)[left/alphabetic] 原点的墨迹范围 */
+  var _punctInkCache = {};
+  WritingPad.punctInk = function (ch, fontStack, px) {
+    var key = ch + '|' + px + '|' + fontStack;
+    if (_punctInkCache[key]) return _punctInkCache[key];
+    var r = null;
+    try {
+      var pad = Math.ceil(px * 0.6);
+      var cv = document.createElement('canvas');
+      cv.width = cv.height = Math.ceil(px + pad * 2);
+      var c = cv.getContext('2d', { willReadFrequently: true });
+      c.font = px + 'px ' + fontStack;
+      c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+      c.fillStyle = '#000';
+      var ox = pad, oy = pad + px;
+      c.fillText(ch, ox, oy);
+      var d = c.getImageData(0, 0, cv.width, cv.height).data;
+      var x0 = cv.width, y0 = cv.height, x1 = -1, y1 = -1, x, y;
+      for (y = 0; y < cv.height; y++) {
+        for (x = 0; x < cv.width; x++) {
+          if (d[(y * cv.width + x) * 4 + 3] > 10) {
+            if (x < x0) x0 = x; if (x > x1) x1 = x;
+            if (y < y0) y0 = y; if (y > y1) y1 = y;
+          }
+        }
+      }
+      if (x1 >= 0) r = { x0: x0 - ox, y0: y0 - oy, x1: x1 - ox, y1: y1 - oy };
+    } catch (e) {}
+    _punctInkCache[key] = r;
+    return r;
+  };
+
+  /* 小标点盖印：各自按自身墨迹宽度定位——墨右缘贴格右 RM，墨下缘贴格下 BM（不再统一锚点） */
+  WritingPad.stampTrailPunct = function (ctx, ch, fontStack, out) {
+    fontStack = fontStack || '"Kaiti SC","KaiTi","STKaiti",serif';
+    var px = out * 0.32, RM = 0.07, BM = 0.04;
+    var ink = WritingPad.punctInk(ch, fontStack, px);
+    ctx.save();
+    ctx.font = px + 'px ' + fontStack;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#2b2118';
+    if (ink) ctx.fillText(ch, out * (1 - RM) - ink.x1, out * (1 - BM) - ink.y1);
+    else { ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(ch, out * 0.83, out * 0.83); }
+    ctx.restore();
+  };
+
+  /* 独占一格的标点（！？—…）：模板字形按墨迹居中，墨最大边占 0.66 格，与汉字墨迹同级 */
+  WritingPad.renderFullPunctCell = function (ch, fontStack, out) {
+    out = out || 200;
+    fontStack = fontStack || '"Kaiti SC","KaiTi","STKaiti",serif';
+    var cv = document.createElement('canvas'); cv.width = out; cv.height = out;
+    var c = cv.getContext('2d');
+    var px = 100, ink0 = WritingPad.punctInk(ch, fontStack, 100);
+    if (ink0) {
+      var m = Math.max(ink0.x1 - ink0.x0 + 1, ink0.y1 - ink0.y0 + 1) || 1;
+      px = 100 * (out * 0.66) / m;
+    }
+    var ink = WritingPad.punctInk(ch, fontStack, px);
+    c.save();
+    c.font = px + 'px ' + fontStack;
+    c.textAlign = 'left'; c.textBaseline = 'alphabetic';
+    c.fillStyle = '#2b2118';
+    if (ink) c.fillText(ch, out / 2 - (ink.x0 + ink.x1) / 2, out / 2 - (ink.y0 + ink.y1) / 2);
+    else { c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(ch, out / 2, out / 2); }
+    c.restore();
+    return cv;
+  };
+
   /* 整纸通用格：所有字共用 side×side 正方形（含 25% 留白），各自以包围盒中心为锚居中，
    * 同一比例、透明底、无格线。side 取全部字形边框的最大值，由调用方先量好传入。
-   * trailPunct：尾随标点（不占格，贴在本字格右下角，约 0.32 格大小，与字保持间距）。 */
+   * trailPunct：尾随小标点（不占格，各自按墨宽定位，墨右缘贴格右、墨下缘贴格下）。
+   * 独占一格的标点（！？—…）直接按墨迹居中画满格。 */
   WritingPad.renderSheetCell = function (rec, ch, fontStack, side, box, trailPunct) {
+    var out = 200, tmp = document.createElement('canvas');
+    tmp.width = out; tmp.height = out;
+    var t2d = tmp.getContext('2d');
+    if (rec && rec.auto === 'punct' && WritingPad.isFullPunct(ch)) {
+      // 叹号/问号/破折号/省略号算一个字：独占一格
+      t2d.drawImage(WritingPad.renderFullPunctCell(ch, fontStack, out), 0, 0);
+      if (trailPunct) WritingPad.stampTrailPunct(t2d, trailPunct, fontStack, out);
+      try { return tmp.toDataURL('image/png'); } catch (e2) { return ''; }
+    }
     box = box || WritingPad.glyphBox(ch, fontStack, (rec && rec.ar) || null);
     var W = box.W, H = box.H, px = box.px, cx = box.cx, cy = box.cy, fs = box.fs;
     var cv = document.createElement('canvas');
@@ -649,19 +732,8 @@
     var bcx = box.bx + box.bw / 2, bcy = box.by + box.bh / 2;
     var sx = Math.max(0, Math.min(W - side, Math.round(bcx - side / 2)));
     var sy = Math.max(0, Math.min(H - side, Math.round(bcy - side / 2)));
-    var out = 200, tmp = document.createElement('canvas');
-    tmp.width = out; tmp.height = out;
-    var t2d = tmp.getContext('2d');
     t2d.drawImage(cv, sx, sy, side, side, 0, 0, out, out);
-    if (trailPunct) {
-      // 标点不占格：贴在上一个字格的右下角（约 0.32 格，与书写时 0.55x 印章同比例）；
-      // 锚点推到最右安全位 (0.83, 0.83)：再右会被格边裁掉（破折号等宽标点半宽约 0.16 格）
-      t2d.font = (out * 0.32) + 'px ' + fs;
-      t2d.textAlign = 'center';
-      t2d.textBaseline = 'middle';
-      t2d.fillStyle = '#2b2118';
-      t2d.fillText(trailPunct, out * 0.83, out * 0.83);
-    }
+    if (trailPunct) WritingPad.stampTrailPunct(t2d, trailPunct, fs, out);
     try { return tmp.toDataURL('image/png'); } catch (e2) { return ''; }
   };
 
