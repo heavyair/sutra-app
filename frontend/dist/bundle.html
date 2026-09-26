@@ -5,7 +5,7 @@
 <script>
 /* 热更新引导（构建注入）：本地 localStorage 有新版 bundle 则直接载入 */
 (function(){
-  var V = 81;
+  var V = 82;
   window.__BUNDLE_V__ = V;
   function g(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
   function s(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
@@ -3916,9 +3916,9 @@ button:active { transform: scale(0.97); }
   function buildPrintSheet(imgs, total) {
     var ps = $('print-sheet');
     var d = new Date();
-    var html = '<h1>抄经作品</h1>' +
-      '<div class="print-meta">《' + escapeHtml(state.sutra ? state.sutra.title : '') + '》 · ' +
-      (total || imgs.length) + ' 字 · ' +
+    var title = state.workviewTitle || (state.sutra ? state.sutra.title : '') || '';
+    var html = '<h1>《' + escapeHtml(title) + '》</h1>' +
+      '<div class="print-meta">' +
       d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate() + '</div>' +
       '<div class="print-grid">';
     imgs.forEach(function (src) {

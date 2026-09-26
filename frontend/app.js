@@ -1797,9 +1797,9 @@
   function buildPrintSheet(imgs, total) {
     var ps = $('print-sheet');
     var d = new Date();
-    var html = '<h1>抄经作品</h1>' +
-      '<div class="print-meta">《' + escapeHtml(state.sutra ? state.sutra.title : '') + '》 · ' +
-      (total || imgs.length) + ' 字 · ' +
+    var title = state.workviewTitle || (state.sutra ? state.sutra.title : '') || '';
+    var html = '<h1>《' + escapeHtml(title) + '》</h1>' +
+      '<div class="print-meta">' +
       d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate() + '</div>' +
       '<div class="print-grid">';
     imgs.forEach(function (src) {
