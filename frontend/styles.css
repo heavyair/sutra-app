@@ -643,6 +643,11 @@ button:active { transform: scale(0.97); }
 .loading-cancel { font-size: 13px; padding: 7px 26px; border-radius: 999px;
   border: 1px solid var(--line); background: transparent; color: var(--ink-dim); }
 .loading-cancel:active { background: rgba(0,0,0,.06); }
+.loading-bar { height: 6px; border-radius: 999px; background: rgba(0,0,0,.12);
+  margin: 2px 0 12px; overflow: hidden; }
+.loading-bar.hidden { display: none; }
+.loading-bar-fill { height: 100%; width: 0; border-radius: 999px; background: var(--gold);
+  transition: width .15s; }
 
 /* 轻提示 toast */
 #toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%) translateY(20px);

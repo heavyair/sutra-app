@@ -224,6 +224,7 @@
       _loadingEl.className = 'hidden';
       _loadingEl.innerHTML = '<div class="loading-box"><div class="loading-spin"></div>' +
         '<div class="loading-text"></div>' +
+        '<div class="loading-bar hidden"><div class="loading-bar-fill"></div></div>' +
         '<button class="loading-cancel">取消</button></div>';
       document.body.appendChild(_loadingEl);
       _loadingEl.querySelector('.loading-cancel').addEventListener('click', function () {
@@ -235,11 +236,30 @@
     _loadingEl.querySelector('.loading-text').textContent = text || '加载中…';
     _loadingEl.querySelector('.loading-cancel').style.display = onCancel ? '' : 'none';
     _loadingCancel = onCancel || null;
+    var _bar0 = _loadingEl.querySelector('.loading-bar');
+    if (_bar0) _bar0.classList.add('hidden');
+    var _fill0 = _loadingEl.querySelector('.loading-bar-fill');
+    if (_fill0) _fill0.style.width = '0';
     _loadingEl.classList.remove('hidden');
     return {
       update: function (t) {
         var el = _loadingEl && _loadingEl.querySelector('.loading-text');
         if (el) el.textContent = t;
+      },
+      progress: function (loaded, total) {
+        var bar = _loadingEl && _loadingEl.querySelector('.loading-bar');
+        var fill = _loadingEl && _loadingEl.querySelector('.loading-bar-fill');
+        var txt = _loadingEl && _loadingEl.querySelector('.loading-text');
+        if (!bar || !fill) return;
+        bar.classList.remove('hidden');
+        if (total > 0) {
+          var pct = Math.min(100, Math.round(loaded / total * 100));
+          fill.style.width = pct + '%';
+          if (txt) txt.textContent = '正在加载 ' + pct + '%';
+        } else {
+          fill.style.width = '100%';
+          if (txt) txt.textContent = '正在加载 ' + Math.round(loaded / 1024) + ' KB';
+        }
       },
       hide: hideLoading
     };
@@ -376,6 +396,49 @@
         }
         return body;
       });
+    });
+  }
+
+  // 带下载进度的 JSON 拉取（大作品慢慢下时显示进度条；无 Content-Length 时显示已下 KB 数）
+  function apiProgress(path, opts, onProgress) {
+    opts = opts || {};
+    var headers = { 'Content-Type': 'application/json' };
+    var token = getToken();
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    var ak = getAnonKey();
+    if (ak) headers['X-Anon-Key'] = ak;
+    var init = { headers: headers };
+    if (opts.signal) init.signal = opts.signal;
+    return fetch(API_BASE + path, init).then(function (r) {
+      var total = parseInt(r.headers.get('Content-Length') || '0', 10) || 0;
+      if (!r.body || typeof r.body.getReader !== 'function') {
+        return r.json().then(function (body) { return { body: body, status: r.status }; });
+      }
+      var reader = r.body.getReader();
+      var chunks = [], loaded = 0;
+      function pump() {
+        return reader.read().then(function (res) {
+          if (res.done) {
+            var buf = new Uint8Array(loaded), off = 0;
+            chunks.forEach(function (c) { buf.set(c, off); off += c.length; });
+            var body = JSON.parse(new TextDecoder().decode(buf));
+            return { body: body, status: r.status };
+          }
+          chunks.push(res.value);
+          loaded += res.value.length;
+          try { onProgress(loaded, total); } catch (e) {}
+          return pump();
+        });
+      }
+      return pump();
+    }).then(function (out) {
+      var body = out.body;
+      if (out.status === 401 && body && body.need_auth && !opts.noAuthRedirect) {
+        try { localStorage.removeItem('sutra_token'); } catch (e) {}
+        enterAuth('login', '登录已过期，请重新登录');
+        body.authExpired = true;
+      }
+      return body;
     });
   }
 
@@ -2229,12 +2292,16 @@
     });
   }
 
-  // 打开作品：viewer（只读/续写），share 为分享 token 时只读
+  // 打开作品：viewer（只读/续写），share 为分享 token 时只读；大作品下载显示进度条
   function openWork(wid, share) {
     var url = '/api/works/' + wid + (share ? '?share=' + encodeURIComponent(share) : '');
-    api(url).then(function (res) {
-      if (!res || !res.ok) { alert('打不开这个作品'); return; }
-      api('/api/sutra/' + encodeURIComponent(res.work.sutra_id)).then(function (sr) {
+    var ctl = new AbortController();
+    var ui = showLoading('正在打开抄本…', function () { ctl.abort(); });
+    apiProgress(url, { signal: ctl.signal }, function (ld, total) { ui.progress(ld, total); }).then(function (res) {
+      if (!res || !res.ok) { ui.hide(); alert('打不开这个作品'); return; }
+      ui.update('正在加载经文…');
+      api('/api/sutra/' + encodeURIComponent(res.work.sutra_id), { signal: ctl.signal }).then(function (sr) {
+        ui.hide();
         if (!sr || !sr.ok || !sr.sutra) { alert('经文数据缺失'); return; }
         state.sutra = sr.sutra;
         var clean = (sr.sutra.full_text || '').replace(/\s+/g, '');
@@ -2253,7 +2320,11 @@
         renderWorkView(res, share);
         showScreen('screen-work');
       });
-    }).catch(function () { alert('网络异常'); });
+    }).catch(function (err) {
+      ui.hide();
+      if (err && err.name === 'AbortError') return; // 用户取消
+      alert('网络异常');
+    });
   }
 
   // 作品查看器的功能按钮（供全局工具菜单用）
