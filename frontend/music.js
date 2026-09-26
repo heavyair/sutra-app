@@ -45,6 +45,14 @@
     this._bassStyle = savedBass === 'bigchime' ? 'bigchime' : 'drone';
     this._bassNodes = [];   // drone 振荡器（切换风格时停掉）
     this._bassTimers = [];  // 大罄敲击定时器
+    // 录制写字音乐开关：默认关，localStorage 记住
+    var savedRec = null;
+    try { savedRec = localStorage.getItem('sutra_rec_audio'); } catch (e) {}
+    this._recAudio = savedRec === '1';
+    // 放映配乐来源：'rec' 播原录音（默认）/ 'gen' 按放映速度重新生成
+    var savedPlaySrc = null;
+    try { savedPlaySrc = localStorage.getItem('sutra_play_audio_src'); } catch (e) {}
+    this._playAudioSrc = savedPlaySrc === 'gen' ? 'gen' : 'rec';
   }
 
   MusicEngine.prototype.setConfig = function (cfg) {
@@ -243,11 +251,11 @@
   // L2：和声铺底（根音三和弦的五声化和）
   MusicEngine.prototype._startPad = function () {
     var self = this;
-    var beat = 60 / this.config.tempo_bpm;
     var chords = [[0, 4, 7], [7, 12, 16], [4, 7, 12], [0, 7, 12]];
     var ci = 0;
     function tick() {
       if (!self.playing) return;
+      var beat = 60 / self.config.tempo_bpm; // 每次取最新 tempo：放映可按速度调
       var t = self.ctx.currentTime + 0.05;
       chords[ci % chords.length].forEach(function (iv) {
         self._pluck(self.config.root_midi + iv, t, beat * 8, 0.05, 'L2');
@@ -381,6 +389,23 @@
     this._applyGates();
   };
   MusicEngine.prototype.getGammaOn = function () { return this._gammaOn !== false; };
+
+  // 录制写字音乐开关（默认关，用户在背景音面板里开）
+  MusicEngine.prototype.getRecAudio = function () { return !!this._recAudio; };
+  MusicEngine.prototype.setRecAudio = function (on) {
+    this._recAudio = !!on;
+    try { localStorage.setItem('sutra_rec_audio', this._recAudio ? '1' : '0'); } catch (e) {}
+    if (!this._recAudio) { try { this.stopRecording(); } catch (e2) {} } // 关掉时丢弃正在录的
+  };
+  MusicEngine.prototype.isRecording = function () {
+    try { return !!(this._recorder && this._recorder.state !== 'inactive'); } catch (e) { return false; }
+  };
+  // 放映配乐来源：'rec' 播原录音 / 'gen' 按放映速度重新生成
+  MusicEngine.prototype.getPlayAudioSrc = function () { return this._playAudioSrc === 'gen' ? 'gen' : 'rec'; };
+  MusicEngine.prototype.setPlayAudioSrc = function (src) {
+    this._playAudioSrc = src === 'gen' ? 'gen' : 'rec';
+    try { localStorage.setItem('sutra_play_audio_src', this._playAudioSrc); } catch (e) {}
+  };
 
   MusicEngine.prototype.start = function () {
     if (this.playing) return;

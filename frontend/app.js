@@ -948,10 +948,10 @@
     try { if (music.setNatureFlags) music.setNatureFlags({ chime: false, spring: false, rain: false }); } catch (e) {}
   }
 
-  // 一段经文显示完 → 开始书写本段：音乐淡入；首段同时开始录制写字音乐
+  // 一段经文显示完 → 开始书写本段：音乐淡入；首段且用户开了录音才开始录制写字音乐
   function beginWritePara(first) {
     try { music.setAudible(true); } catch (e) {}
-    if (first) { try { music.startRecording(); } catch (e) {} }
+    if (first && music.getRecAudio() && !music.isRecording()) { try { music.startRecording(); } catch (e) {} }
     beginChar();
   }
 
@@ -1364,6 +1364,34 @@
       });
       wrap.appendChild(b);
     });
+    // 录音开关：默认关；写字中途打开则从此刻开始录，关掉则丢弃正在录的
+    var recTitle = document.createElement('div');
+    recTitle.className = 'pick-label';
+    recTitle.textContent = '录音';
+    recTitle.style.marginTop = '10px';
+    body.appendChild(recTitle);
+    var recWrap = document.createElement('div');
+    recWrap.className = 'pick-cards';
+    body.appendChild(recWrap);
+    var recBtn = document.createElement('button');
+    function paintRec() {
+      var on = false;
+      try { on = music.getRecAudio(); } catch (e) {}
+      recBtn.className = 'pick-card' + (on ? ' selected' : '');
+      recBtn.innerHTML = '<span><span class="pick-name">\uD83C\uDFA9 录制写字音乐</span>' +
+        '<span class="pick-desc" style="display:block">' + (on ? '开：写完随作品保存' : '关（默认）') + '</span></span>';
+    }
+    paintRec();
+    recBtn.addEventListener('click', function () {
+      var on = false;
+      try {
+        on = !music.getRecAudio();
+        music.setRecAudio(on);
+        if (on && !music.isRecording()) music.startRecording();
+      } catch (e) {}
+      paintRec();
+    });
+    recWrap.appendChild(recBtn);
   }
 
   function hideOverlays() {
@@ -1969,6 +1997,15 @@
       items.push({ label: '放映', onClick: openInkPlay });
       items.push({ label: '整纸放映', onClick: openSheetPlay });
       items.push({ label: 'PDF', onClick: printWork });
+      if (w.has_audio) {
+        // 放映配乐来源：播原录音（默认）/ 按放映速度重新生成，记住选择
+        var src = 'rec';
+        try { src = music.getPlayAudioSrc(); } catch (e) {}
+        items.push({ label: '放映配乐：' + (src === 'rec' ? '原录音' : '重新生成'), onClick: function () {
+          try { music.setPlayAudioSrc(music.getPlayAudioSrc() === 'rec' ? 'gen' : 'rec'); } catch (e2) {}
+          setScreenTools(toolsFor('screen-work')); // 刷新菜单文字
+        } });
+      }
     }
     if (isOwner && getToken()) items.push({ label: '分享', onClick: shareViewedWork });
     if (isOwner && !dedicated) items.push({ label: w.is_public ? '设为私有' : '设为公开', onClick: toggleWorkPublic });
@@ -2079,7 +2116,7 @@
     pad.setPen(state.pen.id);
     autoStartMusic();
     try { music.setAudible(true); } catch (e) {}
-    try { music.startRecording(); } catch (e) {}
+    if (music.getRecAudio() && !music.isRecording()) { try { music.startRecording(); } catch (e) {} }
     beginChar();
   }
 
@@ -2771,11 +2808,37 @@
 
   // 放映配乐：优先放写字时录下的音乐；没有录音则现场生成同一套音乐（用户选"静"则不开）。
   // 返回停止函数，供关闭放映时调用。
-  function playWorkAudio() {
+  // 放映配乐 tempo：平均放映速度比 = 原书写总时长 / 放映总时长；50 起跳、90 封顶
+  // （速度比开平方再映射，避免 16 倍速放映时音乐过吵）
+  function replayTempoFor(items, capMs) {
+    var orig = 0, play = 0, i, j;
+    (items || []).forEach(function (it) {
+      var rec = (it && it.saved && it.saved.strokes) || (it && it.strokes) || {};
+      var strokes = rec.strokes || [];
+      var t0 = -1, t1 = -1;
+      for (i = 0; i < strokes.length; i++) {
+        var st = strokes[i];
+        for (j = 0; j < st.length; j++) {
+          var t = st[j][2];
+          if (t0 < 0 || t < t0) t0 = t;
+          if (t1 < 0 || t > t1) t1 = t;
+        }
+      }
+      if (t0 >= 0 && t1 > t0) { var span = t1 - t0; orig += span; play += Math.min(span, capMs); }
+    });
+    if (!orig || !play) return 50;
+    var tempo = Math.round(50 * Math.sqrt(Math.max(1, orig / play)));
+    return Math.max(50, Math.min(90, tempo));
+  }
+
+  function playWorkAudio(opts) {
+    opts = opts || {};
     var liveMusic = false;
+    var tempoApplied = false;
     function startLive() {
       try {
         var want = music.getSavedBgMode ? music.getSavedBgMode() : 'strings';
+        if (opts.tempo && opts.tempo !== 50) { music.setConfig({ tempo_bpm: opts.tempo }); tempoApplied = true; }
         if (want !== 'silent' && !state.musicOn) { music.start(); state.musicOn = true; liveMusic = true; }
         music.setAudible(true);
       } catch (e) {}
@@ -2783,7 +2846,9 @@
     try {
       var au = $('workview-audio');
       var w = state.workData && state.workData.work;
-      if (w && w.has_audio && au && au.src) {
+      // 有录音的作品：用户选"原录音"才播录音，选"重新生成"则走实时生成（按放映速度定 tempo）
+      var useRec = w && w.has_audio && au && au.src && music.getPlayAudioSrc() === 'rec';
+      if (useRec) {
         try { au.currentTime = 0; } catch (e0) {}
         var p = au.play();
         if (p && p.catch) p.catch(function () { startLive(); });
@@ -2793,6 +2858,7 @@
     } catch (e) { startLive(); }
     return function () {
       try { var au = $('workview-audio'); if (au) au.pause(); } catch (e2) {}
+      if (tempoApplied) { try { music.setConfig({ tempo_bpm: 50 }); } catch (e5) {} tempoApplied = false; }
       if (liveMusic) {
         // 现场音乐是我们开的，关掉并还原
         liveMusic = false;
@@ -2819,7 +2885,7 @@
     inkplayPad.setFont(state.font.stack);
     inkplayActive = true;
     // 声音：优先放写字时录下的音乐；没有录音则现场生成
-    inkplayStopAudio = playWorkAudio();
+    inkplayStopAudio = playWorkAudio({ tempo: replayTempoFor(queue.map(function (pos) { return { saved: byPos[pos] }; }), 8000) });
     var idx = 0;
     var step = function () {
       if (!inkplayActive) return;
@@ -2969,7 +3035,7 @@
     $('sheetplay-scroll').scrollTop = 0;
     $('sheetplay-overlay').classList.remove('hidden');
     sheetplayActive = true;
-    sheetplayStopAudio = playWorkAudio();
+    sheetplayStopAudio = playWorkAudio({ tempo: replayTempoFor(items, 1200) });
     var idx = 0;
     var step = function () {
       if (!sheetplayActive) return;
