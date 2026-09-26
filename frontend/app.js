@@ -1822,9 +1822,8 @@
   }
 
   // 渲染完成后：App 原生桥直接调（不需要手势）；旧 App 提示更新；
-  // 浏览器 window.print() 在移动端需要用户手势——分片渲染耗时已超过手势有效期，
-  // 因此弹确认按钮，让用户在新手势内同步触发打印。
-  function afterPrintReady() {
+  // 浏览器：window.print() 在部分手机浏览器上调不出预览，改走 pdf-lib 直出 PDF 文件下载
+  function afterPrintReady(imgs) {
     try {
       if (window.AndroidPrint && typeof window.AndroidPrint.print === 'function') {
         window.AndroidPrint.print();
@@ -1832,28 +1831,108 @@
       }
     } catch (e) {}
     if (isNativeApp()) {
-      alert('App 内打印需要更新到新版 App；也可以用手机浏览器打开再打印存为 PDF。');
+      alert('App 内打印需要更新到新版 App；也可以用手机浏览器打开下载 PDF。');
       return;
     }
-    showPrintReady();
+    showPrintReady(imgs);
   }
 
-  // "PDF 已准备好"确认框：按钮点击是真实用户手势，同步调 window.print()
-  function showPrintReady() {
+  // PDF 页眉图：标题 + 日期（canvas 画成图，避免 PDF 内嵌中文字体）
+  function makePdfHeader(titleText) {
+    var W = 1600, H = 210;
+    var cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    var c = cv.getContext('2d');
+    c.fillStyle = '#f4eddc';
+    c.fillRect(0, 0, W, H);
+    var d = new Date();
+    var fs = (state.font && state.font.stack) || '"Kaiti SC","KaiTi","STKaiti",serif';
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillStyle = '#2b2118';
+    try {
+      c.font = '92px ' + fs;
+      c.fillText('《' + (titleText || '') + '》', W / 2, 80);
+    } catch (e) {}
+    c.fillStyle = '#8a7d64';
+    try {
+      c.font = '42px ' + fs;
+      c.fillText(d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(), W / 2, 162);
+    } catch (e2) {}
+    return cv.toDataURL('image/png');
+  }
+
+  // 用 pdf-lib 把字图拼成 A4 PDF 并下载（8 列，与整纸/打印同版式）
+  async function downloadWorkPdf(imgs, titleText) {
+    var PDFLib = window.PDFLib;
+    if (!PDFLib || !PDFLib.PDFDocument) throw new Error('PDF 组件未加载，请重载页面再试');
+    var doc = await PDFLib.PDFDocument.create();
+    var PW = 595.28, PH = 841.89, M = 36, COLS = 8;
+    var cell = (PW - M * 2) / COLS;
+    var headerSrc = makePdfHeader(titleText);
+    var headerImg = await doc.embedPng(headerSrc);
+    var headerW = PW - M * 2;
+    var headerH = headerImg.height / headerImg.width * headerW;
+    var gapH = 14;
+    var rowsPerPage = Math.max(1, Math.floor((PH - M * 2 - headerH - gapH) / cell));
+    var cache = {};
+    async function emb(src) {
+      if (!cache[src]) cache[src] = await doc.embedPng(src);
+      return cache[src];
+    }
+    var n = 0;
+    while (n < imgs.length) {
+      var page = doc.addPage([PW, PH]);
+      var yTop = PH - M;
+      page.drawImage(headerImg, { x: M, y: yTop - headerH, width: headerW, height: headerH });
+      var gy = yTop - headerH - gapH;
+      for (var r = 0; r < rowsPerPage && n < imgs.length; r++) {
+        for (var c = 0; c < COLS && n < imgs.length; c++, n++) {
+          var im = await emb(imgs[n]);
+          page.drawImage(im, { x: M + c * cell, y: gy - (r + 1) * cell, width: cell, height: cell });
+        }
+      }
+    }
+    var d = new Date();
+    var safe = String(titleText || '作品').replace(/[\\/:*?"<>|]/g, '');
+    var fname = '抄经_' + safe + '_' + d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate() + '.pdf';
+    var bytes = await doc.save();
+    var blob = new Blob([bytes], { type: 'application/pdf' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { try { URL.revokeObjectURL(a.href); } catch (e) {} a.remove(); }, 5000);
+  }
+
+  // "PDF 已准备好"确认框 → 下载 PDF 文件
+  function showPrintReady(imgs) {
+    var titleText = state.workviewTitle || (state.sutra ? state.sutra.title : '') || '';
     var ov = document.createElement('div');
     ov.className = 'print-ready-overlay';
     ov.innerHTML = '<div class="print-ready-card">' +
-      '<div class="print-ready-title">可以打印了</div>' +
-      '<div class="print-ready-desc">点下面按钮打开打印预览，再选“另存为 PDF”。</div>' +
-      '<button class="print-ready-go">打印 / 存为 PDF</button>' +
+      '<div class="print-ready-title">PDF 已准备好</div>' +
+      '<div class="print-ready-desc">点下面按钮下载 PDF 文件。</div>' +
+      '<button class="print-ready-go">下载 PDF</button>' +
       '<button class="print-ready-cancel">取消</button></div>';
     document.body.appendChild(ov);
     function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
+    function fail(msg) {
+      var dEl = ov.querySelector('.print-ready-desc');
+      if (dEl) dEl.textContent = msg;
+      var b = ov.querySelector('.print-ready-go');
+      if (b) { b.disabled = false; b.textContent = '重试下载'; }
+    }
     ov.querySelector('.print-ready-cancel').addEventListener('click', close);
     ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
     ov.querySelector('.print-ready-go').addEventListener('click', function () {
-      close();
-      try { window.print(); } catch (e) {}
+      var b = ov.querySelector('.print-ready-go');
+      b.disabled = true; b.textContent = '正在生成…';
+      downloadWorkPdf(imgs, titleText).then(function () {
+        close();
+      }).catch(function (err) {
+        fail('下载失败：' + ((err && err.message) || err));
+      });
     });
   }
 
@@ -1874,7 +1953,7 @@
       var snap = (state.workImages || []).filter(Boolean);
       if (snap.length) {
         buildPrintSheet(snap);
-        afterPrintReady();
+        afterPrintReady(snap);
         return;
       }
       alert('还没有写完的字'); return;
@@ -1903,7 +1982,7 @@
         try {
           ui.hide();
           buildPrintSheet(imgs);
-          afterPrintReady();
+          afterPrintReady(imgs);
         } catch (pe) {
           ui.update('PDF 生成失败：' + ((pe && pe.message) || pe));
         }
