@@ -5,7 +5,7 @@
 <script>
 /* 热更新引导（构建注入）：本地 localStorage 有新版 bundle 则直接载入 */
 (function(){
-  var V = 80;
+  var V = 81;
   window.__BUNDLE_V__ = V;
   function g(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
   function s(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
@@ -3787,7 +3787,7 @@ button:active { transform: scale(0.97); }
     }
   }
 
-  // 整纸：复刻 PDF 版式（等比缩小）：标题"抄经作品"＋《经名》·字数·日期＋字格；
+  // 整纸：复刻 PDF 版式（等比缩小）：标题《经名》＋日期＋字格；
   // 字图与 PDF 同取景（renderCropped 紧裁剪，大字满格）
   function renderSheet(box, api, ctx) {
     box.innerHTML = ''; api.cardByPos = {};
@@ -3798,13 +3798,13 @@ button:active { transform: scale(0.97); }
     }
     var sheet = mkEl('div', 'paper-sheet');
     var titleEl = mkEl('div', 'sheet-title');
-    titleEl.textContent = '抄经作品';
+    titleEl.textContent = '《' + (api.title || '') + '》';
     var fontStack = (state.font && state.font.stack) || '';
     if (fontStack) titleEl.style.fontFamily = fontStack;
     sheet.appendChild(titleEl);
     var now = new Date();
     var metaEl = mkEl('div', 'sheet-meta');
-    metaEl.textContent = '《' + (api.title || '') + '》 · ' + cells.length + ' 字 · ' +
+    metaEl.textContent =
       now.getFullYear() + '-' + (now.getMonth() + 1) + '-' + now.getDate();
     sheet.appendChild(metaEl);
     var grid = mkEl('div', 'sheet-grid');

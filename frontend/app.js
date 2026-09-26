@@ -1668,7 +1668,7 @@
     }
   }
 
-  // 整纸：复刻 PDF 版式（等比缩小）：标题"抄经作品"＋《经名》·字数·日期＋字格；
+  // 整纸：复刻 PDF 版式（等比缩小）：标题《经名》＋日期＋字格；
   // 字图与 PDF 同取景（renderCropped 紧裁剪，大字满格）
   function renderSheet(box, api, ctx) {
     box.innerHTML = ''; api.cardByPos = {};
@@ -1679,13 +1679,13 @@
     }
     var sheet = mkEl('div', 'paper-sheet');
     var titleEl = mkEl('div', 'sheet-title');
-    titleEl.textContent = '抄经作品';
+    titleEl.textContent = '《' + (api.title || '') + '》';
     var fontStack = (state.font && state.font.stack) || '';
     if (fontStack) titleEl.style.fontFamily = fontStack;
     sheet.appendChild(titleEl);
     var now = new Date();
     var metaEl = mkEl('div', 'sheet-meta');
-    metaEl.textContent = '《' + (api.title || '') + '》 · ' + cells.length + ' 字 · ' +
+    metaEl.textContent =
       now.getFullYear() + '-' + (now.getMonth() + 1) + '-' + now.getDate();
     sheet.appendChild(metaEl);
     var grid = mkEl('div', 'sheet-grid');
