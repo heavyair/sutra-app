@@ -1348,8 +1348,8 @@
     body.appendChild(wrap);
     var modes = [
       { id: 'silent', name: '静', desc: '关闭背景音' },
-      { id: 'strings', name: '弦', desc: '持续低音铺底' },
-      { id: 'chime', name: '罄', desc: '大罄，31 分钟一击' }
+      { id: 'strings', name: '弦', desc: '清音铺底' },
+      { id: 'chime', name: '罄', desc: '清磬，31 分钟一击' }
     ];
     var cur = 'strings';
     try { cur = music.getBgMode ? music.getBgMode() : 'strings'; } catch (e) {}
@@ -1369,6 +1369,42 @@
       });
       wrap.appendChild(b);
     });
+    // 低音音高/浓淡：作用于弦、罄，点选即时生效并记住
+    function bassPickRow(labelText, opts, getCur, setVal) {
+      var lt = document.createElement('div');
+      lt.className = 'pick-label';
+      lt.textContent = labelText;
+      lt.style.marginTop = '10px';
+      body.appendChild(lt);
+      var w = document.createElement('div');
+      w.className = 'pick-cards';
+      body.appendChild(w);
+      function paint() {
+        w.innerHTML = '';
+        var cur = getCur();
+        opts.forEach(function (o) {
+          var b = document.createElement('button');
+          b.className = 'pick-card' + (o.v === cur ? ' selected' : '');
+          b.innerHTML = '<span><span class="pick-name">' + o.name + '</span>' +
+            '<span class="pick-desc" style="display:block">' + o.desc + '</span></span>';
+          b.addEventListener('click', function () { setVal(o.v); paint(); });
+          w.appendChild(b);
+        });
+      }
+      paint();
+    }
+    bassPickRow('低音音高', [
+      { v: -12, name: '低', desc: '沉稳' },
+      { v: 0, name: '中', desc: '默认' },
+      { v: 12, name: '高', desc: '清亮' }
+    ], function () { try { return music.getBassPitch(); } catch (e) { return 0; } },
+    function (v) { try { music.setBassPitch(v); } catch (e) {} });
+    bassPickRow('低音浓淡', [
+      { v: 0.5, name: '淡', desc: '若有若无' },
+      { v: 1, name: '中', desc: '默认' },
+      { v: 1.8, name: '浓', desc: '厚重' }
+    ], function () { try { return music.getBassLevel(); } catch (e) { return 1; } },
+    function (v) { try { music.setBassLevel(v); } catch (e) {} });
     // 录音开关：默认关；写字中途打开则从此刻开始录，关掉则丢弃正在录的
     var recTitle = document.createElement('div');
     recTitle.className = 'pick-label';

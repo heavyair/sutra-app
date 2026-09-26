@@ -45,6 +45,15 @@
     this._bassStyle = savedBass === 'bigchime' ? 'bigchime' : 'drone';
     this._bassNodes = [];   // drone 振荡器（切换风格时停掉）
     this._bassTimers = [];  // 大罄敲击定时器
+    // 低音音高/浓淡：用户可调，localStorage 记住（pitch: -12/0/+12 半音；level: 0.5/1/1.8 倍）
+    this._bassPitch = 0;
+    this._bassLevel = 1;
+    try {
+      var _bp = parseInt(localStorage.getItem('sutra_bass_pitch'), 10);
+      if (_bp === -12 || _bp === 12) this._bassPitch = _bp;
+      var _bl = parseFloat(localStorage.getItem('sutra_bass_level'));
+      if (_bl === 0.5 || _bl === 1.8) this._bassLevel = _bl;
+    } catch (e) {}
     // 录制写字音乐开关：默认关，localStorage 记住
     var savedRec = null;
     try { savedRec = localStorage.getItem('sutra_rec_audio'); } catch (e) {}
@@ -136,21 +145,37 @@
     return this._bassStyle === 'bigchime' ? 'bigchime' : 'drone';
   };
 
+  // 低音音高/浓淡：用户可调（播放中即时生效，记住选择）
+  MusicEngine.prototype.setBassPitch = function (st) {
+    this._bassPitch = (st === -12 || st === 12) ? st : 0;
+    try { localStorage.setItem('sutra_bass_pitch', String(this._bassPitch)); } catch (e) {}
+    if (this.playing) this._startBass();
+  };
+  MusicEngine.prototype.getBassPitch = function () { return this._bassPitch || 0; };
+  MusicEngine.prototype.setBassLevel = function (m) {
+    this._bassLevel = (m === 0.5 || m === 1.8) ? m : 1;
+    try { localStorage.setItem('sutra_bass_level', String(this._bassLevel)); } catch (e) {}
+    if (this.playing) this._startBass();
+  };
+  MusicEngine.prototype.getBassLevel = function () { return this._bassLevel || 1; };
+
   // L0 持续低音（根音 + 高五度），极慢呼吸式起伏
+  // 清音弦：基音上移八度（原 root-12 太厚），音量减半，求清、细、高、淡
   MusicEngine.prototype._startDrone = function () {
-    var ctx = this.ctx, root = this.config.root_midi;
+    var ctx = this.ctx, root = this.config.root_midi + (this._bassPitch || 0);
+    var lvl = this._bassLevel || 1;
     var self = this;
     this._bassNodes = [];
     [0, 7].forEach(function (iv, i) {
       var osc = ctx.createOscillator();
       osc.type = 'sine';
-      osc.frequency.value = midiToFreq(root - 12 + iv);
+      osc.frequency.value = midiToFreq(root + iv);
       var g = ctx.createGain();
-      g.gain.value = i === 0 ? 0.10 : 0.05;
+      g.gain.value = (i === 0 ? 0.05 : 0.025) * lvl;
       var lfo = ctx.createOscillator();
       lfo.frequency.value = 0.07 + i * 0.03;
       var lfoG = ctx.createGain();
-      lfoG.gain.value = 0.03;
+      lfoG.gain.value = 0.015 * lvl;
       lfo.connect(lfoG); lfoG.connect(g.gain);
       osc.connect(g); g.connect(self.layers.L0);
       osc.start(); lfo.start();
@@ -159,17 +184,19 @@
   };
 
   // 大罄：一击深沉寺磬（低八度 + 非谐泛音列，余韵可达 30 分钟）
+  // 清磬：基音上移八度，峰值音量调淡，高频泛音占比提高
   MusicEngine.prototype._bigChime = function (when) {
     var ctx = this.ctx, self = this;
-    var base = midiToFreq(this.config.root_midi - 12);
+    var base = midiToFreq(this.config.root_midi + (this._bassPitch || 0));
+    var lvl = this._bassLevel || 1;
     // [倍频, 相对音量, 衰减秒数]
-    [[1, 1.0, 1800], [2.01, 0.45, 1350], [2.74, 0.30, 1080], [3.76, 0.18, 810], [5.43, 0.10, 630]].forEach(function (pr) {
+    [[1, 0.70, 1800], [2.01, 0.50, 1350], [2.74, 0.42, 1080], [3.76, 0.30, 810], [5.43, 0.22, 630]].forEach(function (pr) {
       var osc = ctx.createOscillator();
       osc.type = 'sine';
       osc.frequency.value = base * pr[0];
       var g = ctx.createGain();
       g.gain.setValueAtTime(0, when);
-      g.gain.linearRampToValueAtTime(0.085 * pr[1], when + 0.015);
+      g.gain.linearRampToValueAtTime(0.05 * pr[1] * lvl, when + 0.015);
       g.gain.exponentialRampToValueAtTime(0.0001, when + pr[2]);
       osc.connect(g);
       g.connect(self.layers.L0);
