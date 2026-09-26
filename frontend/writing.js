@@ -655,12 +655,12 @@
     t2d.drawImage(cv, sx, sy, side, side, 0, 0, out, out);
     if (trailPunct) {
       // 标点不占格：贴在上一个字格的右下角（约 0.32 格，与书写时 0.55x 印章同比例）；
-      // 与字保持间距：锚点往角落挪，不破坏字格间距
+      // 锚点推到最右安全位 (0.83, 0.83)：再右会被格边裁掉（破折号等宽标点半宽约 0.16 格）
       t2d.font = (out * 0.32) + 'px ' + fs;
       t2d.textAlign = 'center';
       t2d.textBaseline = 'middle';
       t2d.fillStyle = '#2b2118';
-      t2d.fillText(trailPunct, out * 0.80, out * 0.83);
+      t2d.fillText(trailPunct, out * 0.83, out * 0.83);
     }
     try { return tmp.toDataURL('image/png'); } catch (e2) { return ''; }
   };

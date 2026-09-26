@@ -2872,12 +2872,12 @@
     function finish() {
       if (done) return; done = true;
       blit();
-      if (it.trail) { // 尾随标点：贴右下角（与整纸同比例同位置，与字保持间距）
+      if (it.trail) { // 尾随标点：贴右下角（与整纸同比例同位置，锚点最右安全位）
         ctx.save();
         ctx.font = (OUT * 0.32) + 'px ' + box.fs;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillStyle = '#2b2118';
-        ctx.fillText(it.trail, OUT * 0.80, OUT * 0.83);
+        ctx.fillText(it.trail, OUT * 0.83, OUT * 0.83);
         ctx.restore();
       }
       timer = setTimeout(onDone, 220);
