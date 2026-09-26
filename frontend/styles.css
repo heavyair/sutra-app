@@ -347,8 +347,11 @@ button:active { transform: scale(0.97); }
   }
   #print-sheet h1 { text-align: center; letter-spacing: 10px; font-size: 28px; }
   #print-sheet .print-meta { text-align: center; color: #555; font-size: 13px; margin-bottom: 16px; }
-  #print-sheet .print-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; }
-  #print-sheet .print-grid img { width: 100%; }
+  #print-sheet .print-grid { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+  #print-sheet .print-grid .sheet-cell.char { flex: 0 0 calc((100% - 56px) / 8); aspect-ratio: 1; }
+  #print-sheet .print-grid .sheet-cell.char img { width: 100%; height: 100%; display: block; }
+  #print-sheet .print-grid .sheet-cell.punct { flex: 0 0 auto; }
+  #print-sheet .print-grid .sheet-cell.punct img { height: 100%; width: auto; display: block; }
 }
 
 /* ---- 作品（v8）：画廊卡片 / 作品查看 / 回放 ---- */
@@ -510,10 +513,13 @@ button:active { transform: scale(0.97); }
   text-align: center; white-space: nowrap; overflow: hidden;
   font-size: 11px; color: #8a7a5f; margin-bottom: 12px;
 }
-.sheet-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
-/* 字格：通用正方形（全部字形边框的最大者），同一比例，无格线 */
-.sheet-cell { margin: 0; line-height: 0; aspect-ratio: 1; }
-.sheet-cell img { width: 100%; height: 100%; display: block; }
+.sheet-grid { display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch; }
+/* 字格：通用正方形（全部字形边框的最大者），同一比例，无格线；标点为实测宽度的窄槽，插在两字之间 */
+.sheet-cell { margin: 0; line-height: 0; }
+.sheet-cell.char { flex: 0 0 calc((100% - 42px) / 8); aspect-ratio: 1; }
+.sheet-cell.char img { width: 100%; height: 100%; display: block; }
+.sheet-cell.punct { flex: 0 0 auto; }
+.sheet-cell.punct img { height: 100%; width: auto; display: block; }
 .sheet-cell.burned { box-shadow: inset 0 0 10px rgba(110,100,75,.4); border-radius: 4px; }
 .sheet-cell.burned img { object-fit: cover; }
 .work-empty-hint { color: var(--ink-dim); text-align: center; font-size: 13px; padding: 6px 0 20px; }
@@ -575,3 +581,18 @@ button:active { transform: scale(0.97); }
 .btn-mini { font-size: 12px; padding: 5px 10px; border-radius: 8px; border: 1px solid #b49b5e;
   background: transparent; color: #8a6d2f; }
 .btn-mini.danger { border-color: #b05c5c; color: #b05c5c; }
+
+/* ---- 全局加载遮罩：长时间等待（加载经文/抄本、生成 PDF），可撤销 ---- */
+#loading-overlay { position: fixed; inset: 0; z-index: 9999; background: rgba(12, 9, 5, .55);
+  display: flex; align-items: center; justify-content: center; }
+#loading-overlay.hidden { display: none; }
+.loading-box { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 26px 36px; text-align: center; max-width: 78vw; }
+.loading-spin { width: 34px; height: 34px; margin: 0 auto 12px; border-radius: 50%;
+  border: 3px solid var(--line); border-top-color: var(--gold);
+  animation: loading-rot .9s linear infinite; }
+@keyframes loading-rot { to { transform: rotate(360deg); } }
+.loading-text { font-size: 14px; color: var(--ink); margin-bottom: 14px; }
+.loading-cancel { font-size: 13px; padding: 7px 26px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent; color: var(--ink-dim); }
+.loading-cancel:active { background: rgba(0,0,0,.06); }

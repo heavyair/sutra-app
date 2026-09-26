@@ -628,9 +628,8 @@
   };
 
   /* 整纸通用格：所有字共用 side×side 正方形（含 25% 留白），各自以包围盒中心为锚居中，
-   * 同一比例、透明底、无格线。side 取全部字形边框的最大值，由调用方先量好传入。
-   * trailPunct：尾随标点（不占格，贴在本字格右下角，约 0.32 格大小，与字保持间距）。 */
-  WritingPad.renderSheetCell = function (rec, ch, fontStack, side, box, trailPunct) {
+   * 同一比例、透明底、无格线。side 取全部字形边框的最大值，由调用方先量好传入。 */
+  WritingPad.renderSheetCell = function (rec, ch, fontStack, side, box) {
     box = box || WritingPad.glyphBox(ch, fontStack, (rec && rec.ar) || null);
     var W = box.W, H = box.H, px = box.px, cx = box.cx, cy = box.cy, fs = box.fs;
     var cv = document.createElement('canvas');
@@ -653,16 +652,55 @@
     tmp.width = out; tmp.height = out;
     var t2d = tmp.getContext('2d');
     t2d.drawImage(cv, sx, sy, side, side, 0, 0, out, out);
-    if (trailPunct) {
-      // 标点不占格：贴在上一个字格的右下角（约 0.32 格，与书写时 0.55x 印章同比例）；
-      // 锚点推到最右安全位 (0.83, 0.83)：再右会被格边裁掉（破折号等宽标点半宽约 0.16 格）
-      t2d.font = (out * 0.32) + 'px ' + fs;
-      t2d.textAlign = 'center';
-      t2d.textBaseline = 'middle';
-      t2d.fillStyle = '#2b2118';
-      t2d.fillText(trailPunct, out * 0.83, out * 0.83);
-    }
     try { return tmp.toDataURL('image/png'); } catch (e2) { return ''; }
+  };
+
+  // 标点窄槽：标点不再贴进字格，而是独立成项插在两字之间、沉底。
+  // 实测墨迹宽度决定槽宽（墨宽 + 两侧留白），墨迹水平居中、墨底沉到槽底附近。
+  // 返回 {src, w}（w 为输出像素宽，调用方按 w/outH 比例显示）。测不到墨返回 {src:'', w:0}。
+  var _punctSlotCache = { key: '', map: {} };
+  WritingPad.renderPunctSlot = function (ch, fontStack, outH) {
+    outH = outH || 200;
+    var ck = (ch || '') + '|' + String(fontStack) + '|' + outH;
+    var hit = _punctSlotCache.map[ck];
+    if (hit) return hit;
+    var fsPx = Math.round(outH * 0.32);
+    var fs = fontStack || '';
+    var t = document.createElement('canvas'); t.width = outH; t.height = outH;
+    var c = t.getContext('2d');
+    c.font = fsPx + 'px ' + fs;
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillStyle = '#2b2118';
+    c.fillText(ch || '', outH / 2, outH / 2);
+    var d;
+    try { d = c.getImageData(0, 0, outH, outH).data; }
+    catch (e) { return { src: '', w: 0 }; }
+    var x0 = outH, x1 = -1, y1 = -1, x, y, o;
+    for (y = 0; y < outH; y++) {
+      o = y * outH * 4;
+      for (x = 0; x < outH; x++) {
+        if (d[o + x * 4 + 3] > 8) {
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y > y1) y1 = y;
+        }
+      }
+    }
+    if (x1 < 0) return { src: '', w: 0 };
+    var pad = Math.max(4, Math.round(outH * 0.05));
+    var w = Math.ceil((x1 - x0 + 1) + pad * 2);
+    var cv = document.createElement('canvas'); cv.width = w; cv.height = outH;
+    var g = cv.getContext('2d');
+    g.font = fsPx + 'px ' + fs;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = '#2b2118';
+    var inkCx = (x0 + x1) / 2;
+    var targetBottom = outH - Math.round(outH * 0.06);
+    g.fillText(ch || '', (outH / 2) + (w / 2 - inkCx), (outH / 2) + (targetBottom - y1));
+    var r = { src: '', w: w };
+    try { r.src = cv.toDataURL('image/png'); } catch (e2) { return { src: '', w: 0 }; }
+    _punctSlotCache.map[ck] = r;
+    return r;
   };
 
   WritingPad.renderCropped = function (rec, ch, fontStack) {
