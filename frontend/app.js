@@ -1394,16 +1394,16 @@
       paint();
     }
     bassPickRow('低音音高', [
-      { v: -12, name: '低', desc: '沉稳' },
-      { v: 0, name: '中', desc: '默认' },
-      { v: 12, name: '高', desc: '清亮' }
-    ], function () { try { return music.getBassPitch(); } catch (e) { return 0; } },
+      { v: -24, name: '低', desc: '更沉' },
+      { v: -12, name: '中', desc: '默认' },
+      { v: 0, name: '高', desc: '清亮' }
+    ], function () { try { return music.getBassPitch(); } catch (e) { return -12; } },
     function (v) { try { music.setBassPitch(v); } catch (e) {} });
     bassPickRow('低音浓淡', [
-      { v: 0.5, name: '淡', desc: '若有若无' },
-      { v: 1, name: '中', desc: '默认' },
-      { v: 1.8, name: '浓', desc: '厚重' }
-    ], function () { try { return music.getBassLevel(); } catch (e) { return 1; } },
+      { v: 0.25, name: '淡', desc: '若有若无' },
+      { v: 0.5, name: '中', desc: '默认' },
+      { v: 1, name: '浓', desc: '分明' }
+    ], function () { try { return music.getBassLevel(); } catch (e) { return 0.5; } },
     function (v) { try { music.setBassLevel(v); } catch (e) {} });
     // 录音开关：默认关；写字中途打开则从此刻开始录，关掉则丢弃正在录的
     var recTitle = document.createElement('div');

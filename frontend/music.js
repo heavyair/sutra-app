@@ -45,14 +45,14 @@
     this._bassStyle = savedBass === 'bigchime' ? 'bigchime' : 'drone';
     this._bassNodes = [];   // drone 振荡器（切换风格时停掉）
     this._bassTimers = [];  // 大罄敲击定时器
-    // 低音音高/浓淡：用户可调，localStorage 记住（pitch: -12/0/+12 半音；level: 0.5/1/1.8 倍）
-    this._bassPitch = 0;
-    this._bassLevel = 1;
+    // 低音音高/浓淡：用户可调，localStorage 记住（pitch: -24/-12/0 半音；level: 0.25/0.5/1 倍；默认均为"中"）
+    this._bassPitch = -12;
+    this._bassLevel = 0.5;
     try {
       var _bp = parseInt(localStorage.getItem('sutra_bass_pitch'), 10);
-      if (_bp === -12 || _bp === 12) this._bassPitch = _bp;
+      if (_bp === -24 || _bp === -12 || _bp === 0) this._bassPitch = _bp;
       var _bl = parseFloat(localStorage.getItem('sutra_bass_level'));
-      if (_bl === 0.5 || _bl === 1.8) this._bassLevel = _bl;
+      if (_bl === 0.25 || _bl === 0.5 || _bl === 1) this._bassLevel = _bl;
     } catch (e) {}
     // 录制写字音乐开关：默认关，localStorage 记住
     var savedRec = null;
@@ -147,17 +147,17 @@
 
   // 低音音高/浓淡：用户可调（播放中即时生效，记住选择）
   MusicEngine.prototype.setBassPitch = function (st) {
-    this._bassPitch = (st === -12 || st === 12) ? st : 0;
+    this._bassPitch = (st === -24 || st === 0) ? st : -12;
     try { localStorage.setItem('sutra_bass_pitch', String(this._bassPitch)); } catch (e) {}
     if (this.playing) this._startBass();
   };
-  MusicEngine.prototype.getBassPitch = function () { return this._bassPitch || 0; };
+  MusicEngine.prototype.getBassPitch = function () { return (this._bassPitch === -24 || this._bassPitch === 0) ? this._bassPitch : -12; };
   MusicEngine.prototype.setBassLevel = function (m) {
-    this._bassLevel = (m === 0.5 || m === 1.8) ? m : 1;
+    this._bassLevel = (m === 0.25 || m === 1) ? m : 0.5;
     try { localStorage.setItem('sutra_bass_level', String(this._bassLevel)); } catch (e) {}
     if (this.playing) this._startBass();
   };
-  MusicEngine.prototype.getBassLevel = function () { return this._bassLevel || 1; };
+  MusicEngine.prototype.getBassLevel = function () { return (this._bassLevel === 0.25 || this._bassLevel === 1) ? this._bassLevel : 0.5; };
 
   // L0 持续低音（根音 + 高五度），极慢呼吸式起伏
   // 清音弦：基音上移八度（原 root-12 太厚），音量减半，求清、细、高、淡
