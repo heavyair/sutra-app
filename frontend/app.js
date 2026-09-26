@@ -255,6 +255,9 @@
     if (id === 'screen-dedications') {
       return [{ label: '经库', onClick: function () { showScreen('screen-library'); } }];
     }
+    if (id === 'screen-auth') {
+      return [{ label: '经库', onClick: function () { showScreen('screen-library'); } }];
+    }
     return [];
   }
   // 逐字/整纸切换收进工具菜单：按钮文字显示将要切换到的视图

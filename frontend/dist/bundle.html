@@ -5,7 +5,7 @@
 <script>
 /* 热更新引导（构建注入）：本地 localStorage 有新版 bundle 则直接载入 */
 (function(){
-  var V = 78;
+  var V = 79;
   window.__BUNDLE_V__ = V;
   function g(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
   function s(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
@@ -2342,6 +2342,9 @@ button:active { transform: scale(0.97); }
       return []; // 单字屏用自己的悬浮按钮（☰/🧽/▶），不走全局
     }
     if (id === 'screen-dedications') {
+      return [{ label: '经库', onClick: function () { showScreen('screen-library'); } }];
+    }
+    if (id === 'screen-auth') {
       return [{ label: '经库', onClick: function () { showScreen('screen-library'); } }];
     }
     return [];
