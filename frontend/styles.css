@@ -90,6 +90,31 @@ button:active { transform: scale(0.97); }
 #btn-auth-submit { width: 100%; }
 
 /* 经文库 */
+/* ---------- 首页：心经修行入口 ---------- */
+.home-wrap {
+  min-height: 82vh;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center; padding: 24px;
+}
+.home-kicker { color: var(--ink-dim); letter-spacing: 12px; font-size: 14px; margin-bottom: 18px; text-indent: 12px; }
+.home-title { font-size: 30px; letter-spacing: 6px; margin: 0 0 14px; font-weight: 700; text-indent: 6px; }
+.home-intro { color: var(--ink-dim); font-size: 14px; line-height: 1.9; max-width: 20em; margin-bottom: 38px; }
+.btn-home-primary {
+  background: var(--gold); border: 1px solid var(--gold); color: #1a1611;
+  font-size: 19px; font-weight: 700; letter-spacing: 8px; text-indent: 8px;
+  padding: 15px 54px; border-radius: 999px; margin-bottom: 14px;
+}
+.btn-home-primary:active { background: var(--gold-deep); border-color: var(--gold-deep); }
+.btn-home-secondary {
+  background: transparent; border: 1px solid var(--line); color: var(--ink);
+  font-size: 15px; letter-spacing: 2px; padding: 11px 34px; border-radius: 999px; margin-bottom: 34px;
+}
+.home-links { display: flex; align-items: center; gap: 12px; }
+.link-quiet { background: none; border: none; color: var(--ink-dim); font-size: 14px; letter-spacing: 2px; padding: 8px 4px; }
+.link-quiet:active { color: var(--gold); }
+.link-sep { color: var(--line); }
+
 .filter-row { display: flex; gap: 10px; padding: 14px 16px; }
 .chip {
   flex: 1; min-height: 44px; border-radius: 999px;

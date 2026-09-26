@@ -5,7 +5,7 @@
 <script>
 /* 热更新引导（构建注入）：本地 localStorage 有新版 bundle 则直接载入 */
 (function(){
-  var V = 74;
+  var V = 75;
   window.__BUNDLE_V__ = V;
   function g(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
   function s(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
@@ -125,6 +125,31 @@ button:active { transform: scale(0.97); }
 #btn-auth-submit { width: 100%; }
 
 /* 经文库 */
+/* ---------- 首页：心经修行入口 ---------- */
+.home-wrap {
+  min-height: 82vh;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center; padding: 24px;
+}
+.home-kicker { color: var(--ink-dim); letter-spacing: 12px; font-size: 14px; margin-bottom: 18px; text-indent: 12px; }
+.home-title { font-size: 30px; letter-spacing: 6px; margin: 0 0 14px; font-weight: 700; text-indent: 6px; }
+.home-intro { color: var(--ink-dim); font-size: 14px; line-height: 1.9; max-width: 20em; margin-bottom: 38px; }
+.btn-home-primary {
+  background: var(--gold); border: 1px solid var(--gold); color: #1a1611;
+  font-size: 19px; font-weight: 700; letter-spacing: 8px; text-indent: 8px;
+  padding: 15px 54px; border-radius: 999px; margin-bottom: 14px;
+}
+.btn-home-primary:active { background: var(--gold-deep); border-color: var(--gold-deep); }
+.btn-home-secondary {
+  background: transparent; border: 1px solid var(--line); color: var(--ink);
+  font-size: 15px; letter-spacing: 2px; padding: 11px 34px; border-radius: 999px; margin-bottom: 34px;
+}
+.home-links { display: flex; align-items: center; gap: 12px; }
+.link-quiet { background: none; border: none; color: var(--ink-dim); font-size: 14px; letter-spacing: 2px; padding: 8px 4px; }
+.link-quiet:active { color: var(--gold); }
+.link-sep { color: var(--line); }
+
 .filter-row { display: flex; gap: 10px; padding: 14px 16px; }
 .chip {
   flex: 1; min-height: 44px; border-radius: 999px;
@@ -587,15 +612,22 @@ button:active { transform: scale(0.97); }
     </div>
   </section>
 
-  <!-- 3. 经文库列表 -->
+  <!-- 3. 首页：心经修行入口 -->
   <section id="screen-library" class="screen active">
-    <div class="filter-row">
-      <button class="chip active" data-trad="all">全部</button>
-      <button class="chip" data-trad="buddhist">佛经</button>
-      <button class="chip" data-trad="taoist">道经</button>
-      <button class="chip" data-trad="custom">同修</button>
+    <div class="home-wrap">
+      <div class="home-kicker">抄经</div>
+      <h1 class="home-title" id="home-title">般若波罗蜜多心经</h1>
+      <div class="home-intro" id="home-intro"></div>
+      <button id="home-start" class="btn-home-primary">开始抄写</button>
+      <button id="home-resume" class="btn-home-secondary hidden"></button>
+      <div class="home-links">
+        <button id="home-mine" class="link-quiet">我的抄本</button>
+        <span class="link-sep">·</span>
+        <button id="home-public" class="link-quiet">公开抄本</button>
+        <span class="link-sep">·</span>
+        <button id="home-dedicate" class="link-quiet"></button>
+      </div>
     </div>
-    <ul id="sutra-list" class="sutra-list"></ul>
     <div class="foot-spacer"></div>
   </section>
 
@@ -627,7 +659,7 @@ button:active { transform: scale(0.97); }
 
     <!-- 工具菜单：散布全屏 -->
     <div id="tools-menu" class="tools-menu hidden">
-      <button class="tool-item" data-tool="sutra">经文</button>
+      <button class="tool-item" data-tool="sutra">经库</button>
       <button class="tool-item" data-tool="font">字体</button>
       <button class="tool-item" data-tool="music">背景音</button>
       <button class="tool-item" data-tool="gamma40">40Hz</button>
@@ -2306,17 +2338,12 @@ button:active { transform: scale(0.97); }
   // 各屏的功能按钮清单（书写屏用自己的工具菜单，不走全局；顶栏已全部移除）
   function toolsFor(id) {
     if (id === 'screen-library') {
-      var items = [{ label: '公开抄本', onClick: function () { openCollection('public'); } }];
-      if (getToken()) {
-        items.push({ label: '我的抄本', onClick: function () { openCollection('mine'); } });
-        items.push({ label: '上传经书', onClick: openUploadDialog });
-      } else {
-        items.push({ label: '登录', onClick: gotoLogin });
-      }
-      return items;
+      // 首页已有抄本入口；只保留登录（未登录时）
+      if (getToken()) return [];
+      return [{ label: '登录', onClick: gotoLogin }];
     }
     if (id === 'screen-collection') {
-      return [{ label: '经文库', onClick: function () { showScreen('screen-library'); } }];
+      return [{ label: '经库', onClick: function () { showScreen('screen-library'); } }];
     }
     if (id === 'screen-work') {
       return workScreenTools();
@@ -2325,7 +2352,7 @@ button:active { transform: scale(0.97); }
       return []; // 单字屏用自己的悬浮按钮（☰/🧽/▶），不走全局
     }
     if (id === 'screen-dedications') {
-      return [{ label: '经文库', onClick: function () { showScreen('screen-library'); } }];
+      return [{ label: '经库', onClick: function () { showScreen('screen-library'); } }];
     }
     return [];
   }
@@ -2565,89 +2592,47 @@ button:active { transform: scale(0.97); }
     }
   })();
 
-  /* ---------- 3. 经文库 ---------- */
+  /* ---------- 3. 首页 ---------- */
   function loadLibrary() {
     api('/api/sutras').then(function (res) {
       if (!res.ok) return;
-      renderLibrary(res.sutras);
+      renderHome(res.sutras);
     });
   }
 
-  function renderLibrary(sutras) {
-    // 空分类不显示：没有同修上传 / 没有道经时，隐藏对应筛选
-    var hasCustom = sutras.some(function (s) { return s.tradition === 'custom'; });
-    var hasTaoist = sutras.some(function (s) { return s.tradition === 'taoist'; });
-    var customChip = document.querySelector('#screen-library .chip[data-trad="custom"]');
-    var taoistChip = document.querySelector('#screen-library .chip[data-trad="taoist"]');
-    if (customChip) customChip.style.display = hasCustom ? '' : 'none';
-    if (taoistChip) taoistChip.style.display = hasTaoist ? '' : 'none';
-    // 当前选中的筛选若已无内容，切回"全部"
-    if ((state.filter === 'custom' && !hasCustom) || (state.filter === 'taoist' && !hasTaoist)) {
-      state.filter = 'all';
-      document.querySelectorAll('#screen-library .chip').forEach(function (c) {
-        c.classList.toggle('active', c.dataset.trad === 'all');
-      });
+  function renderHome(sutras) {
+    // 首页：心经修行入口（只保留心经，取第一部）
+    var s = (sutras && sutras[0]) || null;
+    if (!s) {
+      $('home-title').textContent = '经文准备中';
+      return;
     }
-    var list = $('sutra-list');
-    list.innerHTML = '';
-    sutras
-      .filter(function (s) { return state.filter === 'all' || s.tradition === state.filter; })
-      .forEach(function (s) {
-        var li = document.createElement('li');
-        var trad = s.tradition === 'buddhist' ? '佛经' : (s.tradition === 'taoist' ? '道经' : '同修');
-        var todo = s.char_count === 0 ? '<span class="badge-todo">待补充全文</span>' : '';
-        var upBadge = '';
-        if (s.source === 'upload') {
-          upBadge = '<span class="badge-upload">同修 · ' + (s.visibility === 'public' ? '公开' : '私有') + (s.mine ? ' · 我的' : '') + '</span>';
-        }
-        li.innerHTML =
-          '<div class="sutra-title">' + escapeHtml(s.title) + todo + upBadge + '</div>' +
-          '<div class="sutra-meta">' + trad + ' · ' + s.char_count + '字 · ♥ ' + s.like_count + '</div>' +
-          '<div class="sutra-intro">' + escapeHtml(s.intro || '') + '</div>';
-        var dc = s.dedication_count || 0;
-        if (dc > 0) {
-          var db = document.createElement('button');
-          db.className = 'ded-count';
-          db.textContent = '🪷 回向 ' + dc;
-          db.addEventListener('click', function (e) {
-            e.stopPropagation();
-            openDedicationWall(s.id, s.title);
-          });
-          li.appendChild(db);
-        }
-        if (s.mine && s.source === 'upload') {
-          var acts = document.createElement('div');
-          acts.className = 'sutra-own-actions';
-          var tg = document.createElement('button');
-          tg.className = 'btn-mini';
-          tg.textContent = s.visibility === 'public' ? '设为私有' : '设为公开';
-          tg.addEventListener('click', function (e) {
-            e.stopPropagation();
-            toggleSutraVisibility(s.id, s.visibility === 'public' ? 'private' : 'public');
-          });
-          var del = document.createElement('button');
-          del.className = 'btn-mini danger';
-          del.textContent = '删除';
-          del.addEventListener('click', function (e) {
-            e.stopPropagation();
-            deleteSutra(s.id, s.title);
-          });
-          acts.appendChild(tg); acts.appendChild(del);
-          li.appendChild(acts);
-        }
-        li.addEventListener('click', function () {
-          if (li.dataset.busy) return;           // 防重复点击
-          li.dataset.busy = '1';
-          var meta = li.querySelector('.sutra-meta');
-          var oldMeta = meta.textContent;
-          meta.textContent = '加载中…';
-          openSutra(s.id, function () {
-            delete li.dataset.busy;
-            meta.textContent = oldMeta;
-          });
-        });
-        list.appendChild(li);
-      });
+    state.homeSutra = s;
+    $('home-title').textContent = '《' + s.title + '》';
+    $('home-intro').textContent = s.intro || '';
+    var dc = s.dedication_count || 0;
+    $('home-dedicate').textContent = '🪷 回向' + (dc > 0 ? ' ' + dc : '');
+    // 开始抄写：直达抄写开新作（与原来点经书卡片一致）
+    $('home-start').onclick = function () { openSutra(s.id); };
+    $('home-mine').onclick = function () { openCollection('mine'); };
+    $('home-public').onclick = function () { openCollection('public'); };
+    $('home-dedicate').onclick = function () { openDedicationWall(s.id, s.title); };
+    // 继续上次：找最近一部没写完的作品（登录/匿名都支持）
+    var rb = $('home-resume');
+    rb.classList.add('hidden');
+    rb.onclick = null;
+    api('/api/my/works').then(function (res) {
+      var works = (res && res.ok && res.works) || [];
+      var unfinished = null;
+      for (var i = 0; i < works.length; i++) {
+        var w = works[i];
+        if (w.sutra_id === s.id && (w.chars_done || 0) < (w.chars_total || 0)) { unfinished = w; break; }
+      }
+      if (!unfinished) return;
+      rb.textContent = '继续上次 · ' + unfinished.chars_done + ' / ' + unfinished.chars_total + ' 字';
+      rb.classList.remove('hidden');
+      rb.onclick = function () { openWork(unfinished.id); };
+    }).catch(function () {});
   }
 
   /* ---------- 3a. 上传经书（登录用户，每人限 1GB） ---------- */
@@ -2718,10 +2703,6 @@ button:active { transform: scale(0.97); }
       btn.disabled = false; btn.textContent = '上传';
       if (!res || !res.ok) { alert((res && res.message) || '上传失败，请重试'); return; }
       closeUploadDialog();
-      state.filter = 'custom';
-      document.querySelectorAll('#screen-library .chip').forEach(function (c) {
-        c.classList.toggle('active', c.dataset.trad === 'custom');
-      });
       loadLibrary();
     }).catch(function () {
       btn.disabled = false; btn.textContent = '上传';
@@ -2744,15 +2725,6 @@ button:active { transform: scale(0.97); }
       loadLibrary();
     });
   }
-
-  document.querySelectorAll('#screen-library .chip').forEach(function (chip) {
-    chip.addEventListener('click', function () {
-      document.querySelectorAll('#screen-library .chip').forEach(function (c) { c.classList.remove('active'); });
-      chip.classList.add('active');
-      state.filter = chip.dataset.trad;
-      loadLibrary();
-    });
-  });
 
   /* ---------- 3b. 回向记录 ---------- */
   var DED_KIND_NAMES = { huixiangji: '回向偈', puxian: '普贤回向', pingdeng: '平等回向', xiaozai: '消灾祈福' };
@@ -3517,7 +3489,7 @@ button:active { transform: scale(0.97); }
         } },
       { label: 'PDF', onClick: printWork },
       { label: '分享', onClick: shareWork },
-      { label: '经文库', onClick: backToLibrary }
+      { label: '经库', onClick: backToLibrary }
     ];
   }
 
@@ -3586,7 +3558,7 @@ button:active { transform: scale(0.97); }
             $('done-main').classList.add('hidden');
             $('done-cremated').classList.remove('hidden');
             // 焚化后只剩一个去处
-            setScreenTools([{ label: '经文库', onClick: backToLibrary }]);
+            setScreenTools([{ label: '经库', onClick: backToLibrary }]);
             state.work = null;
           } else { alert('焚化失败，请重试'); }
         }).catch(function () { alert('焚化失败，请重试'); });
@@ -3885,7 +3857,7 @@ button:active { transform: scale(0.97); }
     if (state.workViewLocal) {
       items.push({ label: '返回', onClick: function () { showScreen('screen-write'); } });
     } else {
-      items.push({ label: '经文库', onClick: function () { state.flowToken++; showScreen('screen-library'); } });
+      items.push({ label: '经库', onClick: function () { state.flowToken++; showScreen('screen-library'); } });
     }
     return items;
   }
