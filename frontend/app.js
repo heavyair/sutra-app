@@ -331,34 +331,14 @@
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  /* ---------- 1. 推荐码 ---------- */
-  $('btn-verify').addEventListener('click', function () {
-    var code = $('invite-code').value.trim();
-    var msg = $('invite-msg');
-    msg.textContent = '验证中…';
-    api('/api/invite/verify', {
-      method: 'POST',
-      body: JSON.stringify({ code: code }),
-    }).then(function (res) {
-      if (res.ok) {
-        try { localStorage.setItem('sutra_invite', code); } catch (e) {}
-        enterAuth('register');
-      } else {
-        msg.textContent = res.message || '验证失败';
-      }
-    }).catch(function () {
-      msg.textContent = '网络错误，请重试';
-    });
-  });
-
-  /* ---------- 2. 注册 / 登录 ---------- */
+  /* ---------- 1. 注册 / 登录 ---------- */
   var authMode = 'register';   // register | login
   var authType = 'email';       // phone | email（短信通道未配置前只留邮箱）
 
   function refreshAuthUI() {
     $('auth-title').textContent = authMode === 'register' ? '注册' : '登录';
     $('auth-sub').textContent = authMode === 'register'
-      ? '推荐码验证通过，请注册账号'
+      ? '欢迎，请注册账号'
       : '欢迎回来，请登录';
     $('btn-auth-submit').textContent = authMode === 'register' ? '注册' : '登录';
     $('chip-mode-register').classList.toggle('active', authMode === 'register');
@@ -445,7 +425,6 @@
     if (authMode === 'register') {
       body.account_type = authType;
       body.code = code;
-      try { body.invite_code = localStorage.getItem('sutra_invite') || ''; } catch (e) {}
     }
     api(path, { method: 'POST', body: JSON.stringify(body), noAuthRedirect: true })
       .then(function (res) {
@@ -463,19 +442,10 @@
       .catch(function () { msg.textContent = '网络错误，请重试'; });
   });
 
-  $('btn-auth-reinvite').addEventListener('click', function () {
-    try { localStorage.removeItem('sutra_invite'); } catch (e) {}
-    $('invite-code').value = '';
-    $('invite-msg').textContent = '';
-    showScreen('screen-invite');
-  });
-
-  /* 登录入口：未登录时收进经文库的工具按钮 */
+  /* 登录入口：未登录时收进首页的工具按钮 */
   function gotoLogin() {
     if (getToken()) return;   // 已登录，不再跳转
-    var code = null;
-    try { code = localStorage.getItem('sutra_invite'); } catch (e) {}
-    if (code) { enterAuth('login'); } else { showScreen('screen-invite'); }
+    enterAuth('login');
   }
   function refreshLoginBtn() {
     // 登录态变化时刷新经文库的工具菜单（顶栏已移除）

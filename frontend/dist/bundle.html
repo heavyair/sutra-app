@@ -5,7 +5,7 @@
 <script>
 /* 热更新引导（构建注入）：本地 localStorage 有新版 bundle 则直接载入 */
 (function(){
-  var V = 77;
+  var V = 78;
   window.__BUNDLE_V__ = V;
   function g(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
   function s(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
@@ -576,19 +576,7 @@ button:active { transform: scale(0.97); }
 <body>
 <div id="app">
 
-  <!-- 1. 推荐码进入页 -->
-  <section id="screen-invite" class="screen">
-    <div class="invite-card">
-      <div class="invite-seal">🪷</div>
-      <h1>抄经</h1>
-      <p class="subtitle">一笔一划 · 安心静虑</p>
-      <input id="invite-code" type="text" placeholder="请输入推荐码" autocomplete="off" autocapitalize="characters">
-      <button id="btn-verify" class="btn-primary">进入</button>
-      <p id="invite-msg" class="msg"></p>
-    </div>
-  </section>
-
-  <!-- 2. 注册 / 登录 -->
+  <!-- 1. 注册 / 登录 -->
   <section id="screen-auth" class="screen">
     <div class="invite-card">
       <div class="invite-seal">🪷</div>
@@ -611,7 +599,6 @@ button:active { transform: scale(0.97); }
       <button id="btn-auth-submit" class="btn-primary">注册</button>
       <p id="auth-msg" class="msg"></p>
       <button id="btn-auth-switch" class="btn-ghost"></button>
-      <button id="btn-auth-reinvite" class="btn-ghost">重新输入推荐码</button>
     </div>
   </section>
 
@@ -2433,34 +2420,14 @@ button:active { transform: scale(0.97); }
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  /* ---------- 1. 推荐码 ---------- */
-  $('btn-verify').addEventListener('click', function () {
-    var code = $('invite-code').value.trim();
-    var msg = $('invite-msg');
-    msg.textContent = '验证中…';
-    api('/api/invite/verify', {
-      method: 'POST',
-      body: JSON.stringify({ code: code }),
-    }).then(function (res) {
-      if (res.ok) {
-        try { localStorage.setItem('sutra_invite', code); } catch (e) {}
-        enterAuth('register');
-      } else {
-        msg.textContent = res.message || '验证失败';
-      }
-    }).catch(function () {
-      msg.textContent = '网络错误，请重试';
-    });
-  });
-
-  /* ---------- 2. 注册 / 登录 ---------- */
+  /* ---------- 1. 注册 / 登录 ---------- */
   var authMode = 'register';   // register | login
   var authType = 'email';       // phone | email（短信通道未配置前只留邮箱）
 
   function refreshAuthUI() {
     $('auth-title').textContent = authMode === 'register' ? '注册' : '登录';
     $('auth-sub').textContent = authMode === 'register'
-      ? '推荐码验证通过，请注册账号'
+      ? '欢迎，请注册账号'
       : '欢迎回来，请登录';
     $('btn-auth-submit').textContent = authMode === 'register' ? '注册' : '登录';
     $('chip-mode-register').classList.toggle('active', authMode === 'register');
@@ -2547,7 +2514,6 @@ button:active { transform: scale(0.97); }
     if (authMode === 'register') {
       body.account_type = authType;
       body.code = code;
-      try { body.invite_code = localStorage.getItem('sutra_invite') || ''; } catch (e) {}
     }
     api(path, { method: 'POST', body: JSON.stringify(body), noAuthRedirect: true })
       .then(function (res) {
@@ -2565,19 +2531,10 @@ button:active { transform: scale(0.97); }
       .catch(function () { msg.textContent = '网络错误，请重试'; });
   });
 
-  $('btn-auth-reinvite').addEventListener('click', function () {
-    try { localStorage.removeItem('sutra_invite'); } catch (e) {}
-    $('invite-code').value = '';
-    $('invite-msg').textContent = '';
-    showScreen('screen-invite');
-  });
-
-  /* 登录入口：未登录时收进经文库的工具按钮 */
+  /* 登录入口：未登录时收进首页的工具按钮 */
   function gotoLogin() {
     if (getToken()) return;   // 已登录，不再跳转
-    var code = null;
-    try { code = localStorage.getItem('sutra_invite'); } catch (e) {}
-    if (code) { enterAuth('login'); } else { showScreen('screen-invite'); }
+    enterAuth('login');
   }
   function refreshLoginBtn() {
     // 登录态变化时刷新经文库的工具菜单（顶栏已移除）

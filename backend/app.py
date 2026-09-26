@@ -388,9 +388,8 @@ def issue_token(conn, user_id):
 def register():
     data = request.get_json(silent=True) or {}
     code = (data.get("invite_code") or "").strip()
-    ok, msg = check_invite(code)
-    if not ok:
-        return jsonify({"ok": False, "message": msg}), 403
+    # 推荐码已取消准入：不再强制校验，有效才计数留档
+    valid_invite = bool(code) and check_invite(code)[0]
     account_type = data.get("account_type")
     valid, account = normalize_account(account_type, data.get("account"))
     if not valid:
@@ -413,11 +412,12 @@ def register():
     cur = conn.execute(
         "INSERT INTO users (account, account_type, password_hash, invite_code)"
         " VALUES (?, ?, ?, ?)",
-        (account, account_type, generate_password_hash(password), code),
+        (account, account_type, generate_password_hash(password), code if valid_invite else None),
     )
-    conn.execute(
-        "UPDATE invite_codes SET used_count = used_count + 1 WHERE code = ?", (code,)
-    )
+    if valid_invite:
+        conn.execute(
+            "UPDATE invite_codes SET used_count = used_count + 1 WHERE code = ?", (code,)
+        )
     token = issue_token(conn, cur.lastrowid)
     conn.commit()
     conn.close()
