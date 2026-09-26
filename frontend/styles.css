@@ -217,8 +217,9 @@ button:active { transform: scale(0.97); }
   background: rgba(26, 22, 17, 0.55); padding: 24px;
 }
 .picker-overlay.hidden { display: none; }
-/* 回向/放映/回放等弹窗盖住全局工具按钮（完成屏除外：它的功能按钮就在全局工具按钮里） */
-#dedicate-overlay, #inkplay-overlay, #sheetplay-overlay, #replay-overlay { z-index: 70; }
+/* 回向/回放弹窗盖住全局工具按钮（完成屏除外：它的功能按钮就在全局工具按钮里） */
+/* 全屏放映（.play-overlay）自带 z-index，不在此列 */
+#dedicate-overlay, #replay-overlay { z-index: 70; }
 .picker-card {
   background: var(--bg-soft); border: 1px solid var(--line); border-radius: 20px;
   padding: 24px 20px; width: 100%; max-width: 420px;
@@ -400,20 +401,51 @@ button:active { transform: scale(0.97); }
 .farewell-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 8px; }
 
 /* 作品查看：欣赏式纸卡（.work-char），见上方 */
-/* 落笔放映 */
-.inkplay-card { width: min(94vw, 480px); }
-.inkplay-stage { position: relative; width: 100%; aspect-ratio: 3/4; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--paper); margin: 0 auto; }
-.inkplay-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-.inkplay-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
-#inkplay-label { font-size: 14px; color: var(--ink-dim); }
+/* 通用按钮行（回向/上传对话框） */
+.btn-row { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; gap: 10px; }
 
-/* 整纸放映 */
-.sheetplay-card { width: min(96vw, 560px); max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; }
-.sheetplay-scroll { overflow-y: auto; flex: 1; min-height: 0; -webkit-overflow-scrolling: touch; }
-.sheetplay-sheet { margin: 0 auto 12px; }
+/* 全屏放映：逐字 / 整纸 */
+.play-overlay { position: fixed; inset: 0; z-index: 70; background: var(--bg); }
+.play-overlay.hidden { display: none; }
+.play-top {
+  position: absolute; top: calc(12px + env(safe-area-inset-top)); left: 0; right: 0;
+  text-align: center; pointer-events: none; z-index: 2;
+}
+.play-top span {
+  font-size: 13px; color: var(--ink-dim);
+  background: rgba(26, 22, 17, 0.6); padding: 6px 14px; border-radius: 999px;
+}
+/* 逐字放映：纸铺满全屏（笔迹按原宽高比居中适配，不变形） */
+#inkplay-overlay .inkplay-stage { position: absolute; inset: 0; background: var(--paper); overflow: hidden; }
+#inkplay-overlay .inkplay-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* 整纸放映：纸在全屏中滚动 */
+#sheetplay-overlay .sheetplay-scroll { position: absolute; inset: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+#sheetplay-overlay .sheetplay-sheet {
+  margin-left: auto; margin-right: auto;
+  margin-top: calc(52px + env(safe-area-inset-top));
+  margin-bottom: calc(110px + env(safe-area-inset-bottom));
+}
 .sheetplay-sheet .sheet-cell canvas { width: 100%; height: 100%; display: block; }
 .sheetplay-sheet .sheet-cell.playing { outline: 2px solid #b98a2f; outline-offset: -2px; border-radius: 3px; background: rgba(185,138,47,.10); }
-#sheetplay-label { font-size: 14px; color: var(--ink-dim); }
+/* 放映内工具按钮：左下角 ☰，弹出关闭 */
+.play-tools {
+  position: absolute; z-index: 3;
+  left: calc(18px + env(safe-area-inset-left));
+  bottom: calc(24px + env(safe-area-inset-bottom));
+}
+.play-menu { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.play-menu.hidden { display: none; }
+.play-close {
+  position: absolute; pointer-events: auto;
+  left: calc(18px + env(safe-area-inset-left));
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  width: 64px; height: 64px; border-radius: 50%; padding: 0;
+  background: rgba(26, 22, 17, 0.92); border: 1px solid var(--gold);
+  color: var(--ink); font-size: 15px; letter-spacing: 1px;
+  opacity: 0; transform: translate(0, 0) scale(0.4);
+  transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 0.25s;
+}
+.play-menu.open .play-close { opacity: 1; transform: translate(12px, -190px) scale(1); }
 
 /* 回向 */
 .dedication-block { margin: 10px 16px 0; padding: 12px 14px; border-radius: 10px;

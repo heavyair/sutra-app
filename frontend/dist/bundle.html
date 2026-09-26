@@ -5,7 +5,7 @@
 <script>
 /* 热更新引导（构建注入）：本地 localStorage 有新版 bundle 则直接载入 */
 (function(){
-  var V = 79;
+  var V = 80;
   window.__BUNDLE_V__ = V;
   function g(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
   function s(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
@@ -252,8 +252,9 @@ button:active { transform: scale(0.97); }
   background: rgba(26, 22, 17, 0.55); padding: 24px;
 }
 .picker-overlay.hidden { display: none; }
-/* 回向/放映/回放等弹窗盖住全局工具按钮（完成屏除外：它的功能按钮就在全局工具按钮里） */
-#dedicate-overlay, #inkplay-overlay, #sheetplay-overlay, #replay-overlay { z-index: 70; }
+/* 回向/回放弹窗盖住全局工具按钮（完成屏除外：它的功能按钮就在全局工具按钮里） */
+/* 全屏放映（.play-overlay）自带 z-index，不在此列 */
+#dedicate-overlay, #replay-overlay { z-index: 70; }
 .picker-card {
   background: var(--bg-soft); border: 1px solid var(--line); border-radius: 20px;
   padding: 24px 20px; width: 100%; max-width: 420px;
@@ -435,20 +436,51 @@ button:active { transform: scale(0.97); }
 .farewell-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 8px; }
 
 /* 作品查看：欣赏式纸卡（.work-char），见上方 */
-/* 落笔放映 */
-.inkplay-card { width: min(94vw, 480px); }
-.inkplay-stage { position: relative; width: 100%; aspect-ratio: 3/4; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--paper); margin: 0 auto; }
-.inkplay-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-.inkplay-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
-#inkplay-label { font-size: 14px; color: var(--ink-dim); }
+/* 通用按钮行（回向/上传对话框） */
+.btn-row { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; gap: 10px; }
 
-/* 整纸放映 */
-.sheetplay-card { width: min(96vw, 560px); max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; }
-.sheetplay-scroll { overflow-y: auto; flex: 1; min-height: 0; -webkit-overflow-scrolling: touch; }
-.sheetplay-sheet { margin: 0 auto 12px; }
+/* 全屏放映：逐字 / 整纸 */
+.play-overlay { position: fixed; inset: 0; z-index: 70; background: var(--bg); }
+.play-overlay.hidden { display: none; }
+.play-top {
+  position: absolute; top: calc(12px + env(safe-area-inset-top)); left: 0; right: 0;
+  text-align: center; pointer-events: none; z-index: 2;
+}
+.play-top span {
+  font-size: 13px; color: var(--ink-dim);
+  background: rgba(26, 22, 17, 0.6); padding: 6px 14px; border-radius: 999px;
+}
+/* 逐字放映：纸铺满全屏（笔迹按原宽高比居中适配，不变形） */
+#inkplay-overlay .inkplay-stage { position: absolute; inset: 0; background: var(--paper); overflow: hidden; }
+#inkplay-overlay .inkplay-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* 整纸放映：纸在全屏中滚动 */
+#sheetplay-overlay .sheetplay-scroll { position: absolute; inset: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+#sheetplay-overlay .sheetplay-sheet {
+  margin-left: auto; margin-right: auto;
+  margin-top: calc(52px + env(safe-area-inset-top));
+  margin-bottom: calc(110px + env(safe-area-inset-bottom));
+}
 .sheetplay-sheet .sheet-cell canvas { width: 100%; height: 100%; display: block; }
 .sheetplay-sheet .sheet-cell.playing { outline: 2px solid #b98a2f; outline-offset: -2px; border-radius: 3px; background: rgba(185,138,47,.10); }
-#sheetplay-label { font-size: 14px; color: var(--ink-dim); }
+/* 放映内工具按钮：左下角 ☰，弹出关闭 */
+.play-tools {
+  position: absolute; z-index: 3;
+  left: calc(18px + env(safe-area-inset-left));
+  bottom: calc(24px + env(safe-area-inset-bottom));
+}
+.play-menu { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.play-menu.hidden { display: none; }
+.play-close {
+  position: absolute; pointer-events: auto;
+  left: calc(18px + env(safe-area-inset-left));
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  width: 64px; height: 64px; border-radius: 50%; padding: 0;
+  background: rgba(26, 22, 17, 0.92); border: 1px solid var(--gold);
+  color: var(--ink); font-size: 15px; letter-spacing: 1px;
+  opacity: 0; transform: translate(0, 0) scale(0.4);
+  transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 0.25s;
+}
+.play-menu.open .play-close { opacity: 1; transform: translate(12px, -190px) scale(1); }
 
 /* 回向 */
 .dedication-block { margin: 10px 16px 0; padding: 12px 14px; border-radius: 10px;
@@ -728,32 +760,30 @@ button:active { transform: scale(0.97); }
     <div id="char-toast" class="char-toast hidden"></div>
   </section>
 
-<!-- 落笔放映：整部作品按原节奏依次重演，如有人在眼前落笔 -->
-<div id="inkplay-overlay" class="picker-overlay hidden">
-  <div class="picker-card inkplay-card">
-    <div class="inkplay-stage" id="inkplay-stage">
-      <canvas id="inkplay-paper"></canvas>
-      <canvas id="inkplay-ink"></canvas>
-    </div>
-    <div class="inkplay-bar">
-      <span id="inkplay-label"></span>
-      <button id="btn-inkplay-close" class="btn-ghost">关闭</button>
-    </div>
+<!-- 落笔放映：全屏，整部作品按原节奏依次重演，如有人在眼前落笔 -->
+<div id="inkplay-overlay" class="play-overlay hidden">
+  <div class="inkplay-stage" id="inkplay-stage">
+    <canvas id="inkplay-paper"></canvas>
+    <canvas id="inkplay-ink"></canvas>
+  </div>
+  <div class="play-top"><span id="inkplay-label"></span></div>
+  <button id="btn-inkplay-tools" class="fab play-tools" aria-label="工具">☰</button>
+  <div id="inkplay-menu" class="play-menu hidden">
+    <button class="play-close" id="btn-inkplay-close">关闭</button>
   </div>
 </div>
 
-<!-- 整纸放映：一页纸上按顺序逐字重演笔画 -->
-<div id="sheetplay-overlay" class="picker-overlay hidden">
-  <div class="picker-card sheetplay-card">
-    <div class="sheetplay-scroll" id="sheetplay-scroll">
-      <div class="paper-sheet sheetplay-sheet">
-        <div class="sheet-grid" id="sheetplay-grid"></div>
-      </div>
+<!-- 整纸放映：全屏，一页纸上按顺序逐字重演笔画 -->
+<div id="sheetplay-overlay" class="play-overlay hidden">
+  <div class="sheetplay-scroll" id="sheetplay-scroll">
+    <div class="paper-sheet sheetplay-sheet">
+      <div class="sheet-grid" id="sheetplay-grid"></div>
     </div>
-    <div class="inkplay-bar">
-      <span id="sheetplay-label"></span>
-      <button id="btn-sheetplay-close" class="btn-ghost">关闭</button>
-    </div>
+  </div>
+  <div class="play-top"><span id="sheetplay-label"></span></div>
+  <button id="btn-sheetplay-tools" class="fab play-tools" aria-label="工具">☰</button>
+  <div id="sheetplay-menu" class="play-menu hidden">
+    <button class="play-close" id="btn-sheetplay-close">关闭</button>
   </div>
 </div>
 
@@ -778,7 +808,7 @@ button:active { transform: scale(0.97); }
       <button data-anon="0" class="chip">署名</button>
     </div>
     <input id="dedicate-sign" class="text-input hidden" maxlength="20" placeholder="署名，如：妙音居士">
-    <div class="inkplay-bar">
+    <div class="btn-row">
       <button id="btn-dedicate-confirm" class="btn-primary">开始回向</button>
       <button id="btn-dedicate-cancel" class="btn-ghost">取消</button>
     </div>
@@ -805,7 +835,7 @@ button:active { transform: scale(0.97); }
     </div>
     <label class="upload-check"><input id="upload-pledge" type="checkbox"> 我承诺所传经文用于劝人向善</label>
     <p id="upload-quota" class="picker-hint"></p>
-    <div class="inkplay-bar">
+    <div class="btn-row">
       <button id="btn-upload-confirm" class="btn-primary">上传</button>
       <button id="btn-upload-cancel" class="btn-ghost">取消</button>
     </div>
@@ -4588,15 +4618,6 @@ button:active { transform: scale(0.97); }
   /* ---------- 回放：重演一字的落笔过程（与落笔放映同一套实现） ---------- */
   // 按书写宽高比定舞台尺寸——先定尺寸、显示，再建 pad 并 _resize，
   // 否则 backing store 与 CSS 对不上会被拉伸变形
-  function sizePlayStage(stageEl, ar, maxW, maxH) {
-    ar = ar || (window.innerWidth / window.innerHeight) || 0.5;
-    var sw = maxW, sh = sw / ar;
-    if (sh > maxH) { sh = maxH; sw = sh * ar; }
-    stageEl.style.width = Math.round(sw) + 'px';
-    stageEl.style.height = Math.round(sh) + 'px';
-    stageEl.style.aspectRatio = 'auto';
-  }
-
   // 单字演绎（放映/单字回放共用）：标点盖印停 450ms，字后停 500ms；返回取消函数
   function playOneChar(pad, ch, saved, onDone) {
     pad.setFont(state.font.stack);
@@ -4908,11 +4929,7 @@ button:active { transform: scale(0.97); }
     var queue = [];
     for (var i = 0; i < full.length; i++) if (byPos[i]) queue.push(i);
     if (!queue.length) { alert('还没有写完的字'); return; }
-    // 舞台按书写时的宽高比定尺寸——先定尺寸、显示，再建 pad 并 _resize，
-    // 否则 backing store 与 CSS 对不上会被拉伸变形
-    var firstRec = (byPos[queue[0]] && byPos[queue[0]].strokes) || {};
-    var ar = firstRec.ar || (window.innerWidth / window.innerHeight) || 0.5;
-    sizePlayStage($('inkplay-stage'), ar, Math.min(window.innerWidth * 0.94, 480), window.innerHeight * 0.62);
+    // 全屏：舞台铺满 overlay，笔迹按书写时的宽高比居中适配（replayStrokes 内 _fitRect 处理）
     $('inkplay-overlay').classList.remove('hidden');
     if (!inkplayPad) inkplayPad = new WritingPad($('inkplay-paper'), $('inkplay-ink'), {});
     else inkplayPad._resize();
@@ -4941,6 +4958,8 @@ button:active { transform: scale(0.97); }
     inkplayActive = false;
     if (inkplayCancel) { inkplayCancel(); inkplayCancel = null; }
     if (inkplayStopAudio) { try { inkplayStopAudio(); } catch (e) {} inkplayStopAudio = null; }
+    var m = $('inkplay-menu');
+    m.classList.remove('open'); m.classList.add('hidden');
     $('inkplay-overlay').classList.add('hidden');
   }
   $('btn-inkplay-close').addEventListener('click', closeInkPlay);
@@ -5095,9 +5114,28 @@ button:active { transform: scale(0.97); }
     sheetplayActive = false;
     if (sheetplayCancel) { try { sheetplayCancel(); } catch (e) {} sheetplayCancel = null; }
     if (sheetplayStopAudio) { try { sheetplayStopAudio(); } catch (e2) {} sheetplayStopAudio = null; }
+    var m = $('sheetplay-menu');
+    m.classList.remove('open'); m.classList.add('hidden');
     $('sheetplay-overlay').classList.add('hidden');
   }
   $('btn-sheetplay-close').addEventListener('click', closeSheetPlay);
+
+  /* 放映内工具按钮：☰ 弹出关闭（与书写屏工具菜单同手感） */
+  function bindPlayTools(btnId, menuId) {
+    $(btnId).addEventListener('click', function (e) {
+      e.stopPropagation();
+      var m = $(menuId);
+      if (m.classList.contains('hidden')) {
+        m.classList.remove('hidden');
+        requestAnimationFrame(function () { m.classList.add('open'); });
+      } else {
+        m.classList.remove('open');
+        setTimeout(function () { m.classList.add('hidden'); }, 320);
+      }
+    });
+  }
+  bindPlayTools('btn-inkplay-tools', 'inkplay-menu');
+  bindPlayTools('btn-sheetplay-tools', 'sheetplay-menu');
 
   /* ---------- 分享链接直达：#w=123&share=xxx ---------- */
   (function () {

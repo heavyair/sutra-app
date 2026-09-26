@@ -2499,15 +2499,6 @@
   /* ---------- 回放：重演一字的落笔过程（与落笔放映同一套实现） ---------- */
   // 按书写宽高比定舞台尺寸——先定尺寸、显示，再建 pad 并 _resize，
   // 否则 backing store 与 CSS 对不上会被拉伸变形
-  function sizePlayStage(stageEl, ar, maxW, maxH) {
-    ar = ar || (window.innerWidth / window.innerHeight) || 0.5;
-    var sw = maxW, sh = sw / ar;
-    if (sh > maxH) { sh = maxH; sw = sh * ar; }
-    stageEl.style.width = Math.round(sw) + 'px';
-    stageEl.style.height = Math.round(sh) + 'px';
-    stageEl.style.aspectRatio = 'auto';
-  }
-
   // 单字演绎（放映/单字回放共用）：标点盖印停 450ms，字后停 500ms；返回取消函数
   function playOneChar(pad, ch, saved, onDone) {
     pad.setFont(state.font.stack);
@@ -2819,11 +2810,7 @@
     var queue = [];
     for (var i = 0; i < full.length; i++) if (byPos[i]) queue.push(i);
     if (!queue.length) { alert('还没有写完的字'); return; }
-    // 舞台按书写时的宽高比定尺寸——先定尺寸、显示，再建 pad 并 _resize，
-    // 否则 backing store 与 CSS 对不上会被拉伸变形
-    var firstRec = (byPos[queue[0]] && byPos[queue[0]].strokes) || {};
-    var ar = firstRec.ar || (window.innerWidth / window.innerHeight) || 0.5;
-    sizePlayStage($('inkplay-stage'), ar, Math.min(window.innerWidth * 0.94, 480), window.innerHeight * 0.62);
+    // 全屏：舞台铺满 overlay，笔迹按书写时的宽高比居中适配（replayStrokes 内 _fitRect 处理）
     $('inkplay-overlay').classList.remove('hidden');
     if (!inkplayPad) inkplayPad = new WritingPad($('inkplay-paper'), $('inkplay-ink'), {});
     else inkplayPad._resize();
@@ -2852,6 +2839,8 @@
     inkplayActive = false;
     if (inkplayCancel) { inkplayCancel(); inkplayCancel = null; }
     if (inkplayStopAudio) { try { inkplayStopAudio(); } catch (e) {} inkplayStopAudio = null; }
+    var m = $('inkplay-menu');
+    m.classList.remove('open'); m.classList.add('hidden');
     $('inkplay-overlay').classList.add('hidden');
   }
   $('btn-inkplay-close').addEventListener('click', closeInkPlay);
@@ -3006,9 +2995,28 @@
     sheetplayActive = false;
     if (sheetplayCancel) { try { sheetplayCancel(); } catch (e) {} sheetplayCancel = null; }
     if (sheetplayStopAudio) { try { sheetplayStopAudio(); } catch (e2) {} sheetplayStopAudio = null; }
+    var m = $('sheetplay-menu');
+    m.classList.remove('open'); m.classList.add('hidden');
     $('sheetplay-overlay').classList.add('hidden');
   }
   $('btn-sheetplay-close').addEventListener('click', closeSheetPlay);
+
+  /* 放映内工具按钮：☰ 弹出关闭（与书写屏工具菜单同手感） */
+  function bindPlayTools(btnId, menuId) {
+    $(btnId).addEventListener('click', function (e) {
+      e.stopPropagation();
+      var m = $(menuId);
+      if (m.classList.contains('hidden')) {
+        m.classList.remove('hidden');
+        requestAnimationFrame(function () { m.classList.add('open'); });
+      } else {
+        m.classList.remove('open');
+        setTimeout(function () { m.classList.add('hidden'); }, 320);
+      }
+    });
+  }
+  bindPlayTools('btn-inkplay-tools', 'inkplay-menu');
+  bindPlayTools('btn-sheetplay-tools', 'sheetplay-menu');
 
   /* ---------- 分享链接直达：#w=123&share=xxx ---------- */
   (function () {

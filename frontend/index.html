@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1a1611">
 <title>抄经 · 静心</title>
-<link rel="stylesheet" href="styles.css?v=79">
+<link rel="stylesheet" href="styles.css?v=80">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@600&display=swap">
 </head>
@@ -164,32 +164,30 @@
     <div id="char-toast" class="char-toast hidden"></div>
   </section>
 
-<!-- 落笔放映：整部作品按原节奏依次重演，如有人在眼前落笔 -->
-<div id="inkplay-overlay" class="picker-overlay hidden">
-  <div class="picker-card inkplay-card">
-    <div class="inkplay-stage" id="inkplay-stage">
-      <canvas id="inkplay-paper"></canvas>
-      <canvas id="inkplay-ink"></canvas>
-    </div>
-    <div class="inkplay-bar">
-      <span id="inkplay-label"></span>
-      <button id="btn-inkplay-close" class="btn-ghost">关闭</button>
-    </div>
+<!-- 落笔放映：全屏，整部作品按原节奏依次重演，如有人在眼前落笔 -->
+<div id="inkplay-overlay" class="play-overlay hidden">
+  <div class="inkplay-stage" id="inkplay-stage">
+    <canvas id="inkplay-paper"></canvas>
+    <canvas id="inkplay-ink"></canvas>
+  </div>
+  <div class="play-top"><span id="inkplay-label"></span></div>
+  <button id="btn-inkplay-tools" class="fab play-tools" aria-label="工具">☰</button>
+  <div id="inkplay-menu" class="play-menu hidden">
+    <button class="play-close" id="btn-inkplay-close">关闭</button>
   </div>
 </div>
 
-<!-- 整纸放映：一页纸上按顺序逐字重演笔画 -->
-<div id="sheetplay-overlay" class="picker-overlay hidden">
-  <div class="picker-card sheetplay-card">
-    <div class="sheetplay-scroll" id="sheetplay-scroll">
-      <div class="paper-sheet sheetplay-sheet">
-        <div class="sheet-grid" id="sheetplay-grid"></div>
-      </div>
+<!-- 整纸放映：全屏，一页纸上按顺序逐字重演笔画 -->
+<div id="sheetplay-overlay" class="play-overlay hidden">
+  <div class="sheetplay-scroll" id="sheetplay-scroll">
+    <div class="paper-sheet sheetplay-sheet">
+      <div class="sheet-grid" id="sheetplay-grid"></div>
     </div>
-    <div class="inkplay-bar">
-      <span id="sheetplay-label"></span>
-      <button id="btn-sheetplay-close" class="btn-ghost">关闭</button>
-    </div>
+  </div>
+  <div class="play-top"><span id="sheetplay-label"></span></div>
+  <button id="btn-sheetplay-tools" class="fab play-tools" aria-label="工具">☰</button>
+  <div id="sheetplay-menu" class="play-menu hidden">
+    <button class="play-close" id="btn-sheetplay-close">关闭</button>
   </div>
 </div>
 
@@ -214,7 +212,7 @@
       <button data-anon="0" class="chip">署名</button>
     </div>
     <input id="dedicate-sign" class="text-input hidden" maxlength="20" placeholder="署名，如：妙音居士">
-    <div class="inkplay-bar">
+    <div class="btn-row">
       <button id="btn-dedicate-confirm" class="btn-primary">开始回向</button>
       <button id="btn-dedicate-cancel" class="btn-ghost">取消</button>
     </div>
@@ -241,7 +239,7 @@
     </div>
     <label class="upload-check"><input id="upload-pledge" type="checkbox"> 我承诺所传经文用于劝人向善</label>
     <p id="upload-quota" class="picker-hint"></p>
-    <div class="inkplay-bar">
+    <div class="btn-row">
       <button id="btn-upload-confirm" class="btn-primary">上传</button>
       <button id="btn-upload-cancel" class="btn-ghost">取消</button>
     </div>
@@ -266,8 +264,8 @@
 <!-- 打印专用：屏幕上隐藏，打印时显示 -->
 <div id="print-sheet"></div>
 
-<script src="music.js?v=79"></script>
-<script src="writing.js?v=79"></script>
-<script src="app.js?v=79"></script>
+<script src="music.js?v=80"></script>
+<script src="writing.js?v=80"></script>
+<script src="app.js?v=80"></script>
 </body>
 </html>
