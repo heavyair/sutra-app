@@ -334,7 +334,12 @@ button:active { transform: scale(0.97); }
 #print-sheet { display: none; }
 @media print {
   #app { display: none !important; }
-  #print-sheet { display: block; color: #000; background: #fff; }
+  #print-sheet {
+    display: block; color: #2b2118;
+    background: linear-gradient(135deg, #f7f1e0 0%, #f1e7cd 60%, #e9dcc0 100%);
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    padding: 24px 20px;
+  }
   #print-sheet h1 { text-align: center; letter-spacing: 10px; font-size: 28px; }
   #print-sheet .print-meta { text-align: center; color: #555; font-size: 13px; margin-bottom: 16px; }
   #print-sheet .print-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; }
