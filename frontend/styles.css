@@ -335,12 +335,15 @@ button:active { transform: scale(0.97); }
 @page { margin: 0; }
 @media print {
   #app { display: none !important; }
-  #print-sheet {
-    display: block; color: #2b2118;
+  /* 纸底画在根上：每一页自动铺满，不靠内容高度撑，也不会多出一页 */
+  html, body {
+    margin: 0;
     background: linear-gradient(135deg, #f7f1e0 0%, #f1e7cd 60%, #e9dcc0 100%);
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
-    padding: 24px 20px; margin: 0;
-    min-height: 100vh; box-sizing: border-box;
+  }
+  #print-sheet {
+    display: block; color: #2b2118; background: transparent;
+    padding: 24px 20px; margin: 0; box-sizing: border-box;
   }
   #print-sheet h1 { text-align: center; letter-spacing: 10px; font-size: 28px; }
   #print-sheet .print-meta { text-align: center; color: #555; font-size: 13px; margin-bottom: 16px; }

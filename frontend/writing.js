@@ -629,7 +629,7 @@
 
   /* 整纸通用格：所有字共用 side×side 正方形（含 25% 留白），各自以包围盒中心为锚居中，
    * 同一比例、透明底、无格线。side 取全部字形边框的最大值，由调用方先量好传入。
-   * trailPunct：尾随标点（不占格，贴在本字格右下角，约 0.36 格大小）。 */
+   * trailPunct：尾随标点（不占格，贴在本字格右下角，约 0.32 格大小，与字保持间距）。 */
   WritingPad.renderSheetCell = function (rec, ch, fontStack, side, box, trailPunct) {
     box = box || WritingPad.glyphBox(ch, fontStack, (rec && rec.ar) || null);
     var W = box.W, H = box.H, px = box.px, cx = box.cx, cy = box.cy, fs = box.fs;
@@ -654,12 +654,13 @@
     var t2d = tmp.getContext('2d');
     t2d.drawImage(cv, sx, sy, side, side, 0, 0, out, out);
     if (trailPunct) {
-      // 标点不占格：贴在上一个字格的右下角（约 0.36 格，与书写时 0.55x 印章同比例）
-      t2d.font = (out * 0.36) + 'px ' + fs;
+      // 标点不占格：贴在上一个字格的右下角（约 0.32 格，与书写时 0.55x 印章同比例）；
+      // 与字保持间距：锚点往角落挪，不破坏字格间距
+      t2d.font = (out * 0.32) + 'px ' + fs;
       t2d.textAlign = 'center';
       t2d.textBaseline = 'middle';
       t2d.fillStyle = '#2b2118';
-      t2d.fillText(trailPunct, out * 0.76, out * 0.78);
+      t2d.fillText(trailPunct, out * 0.80, out * 0.83);
     }
     try { return tmp.toDataURL('image/png'); } catch (e2) { return ''; }
   };
