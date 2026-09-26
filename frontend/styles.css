@@ -644,6 +644,13 @@ button:active { transform: scale(0.97); }
   border: 1px solid var(--line); background: transparent; color: var(--ink-dim); }
 .loading-cancel:active { background: rgba(0,0,0,.06); }
 
+/* 轻提示 toast */
+#toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%) translateY(20px);
+  background: rgba(20, 15, 8, .88); color: #f4eddc; font-size: 14px; letter-spacing: 1px;
+  padding: 10px 22px; border-radius: 999px; z-index: 10001; opacity: 0; pointer-events: none;
+  transition: opacity .25s, transform .25s; max-width: 86vw; text-align: center; }
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
 /* PDF 就绪确认框（v92：移动端 window.print 需手势内同步调用） */
 .print-ready-overlay { position: fixed; inset: 0; z-index: 9999; background: rgba(12, 9, 5, .55);
   display: flex; align-items: center; justify-content: center; }

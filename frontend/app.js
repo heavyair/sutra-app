@@ -245,6 +245,21 @@
     };
   }
 
+  // 轻提示：底部小黑条，2.5 秒自动消失
+  var _toastTimer = null;
+  function toast(msg) {
+    var el = $('toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'toast';
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.classList.add('show');
+    if (_toastTimer) clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2500);
+  }
+
   /* ---------- 全局工具按钮：各屏功能按钮不用时缩进 ☰ ---------- */
   function closeGlobalTools() {
     var m = $('global-menu');
@@ -1932,7 +1947,7 @@
   }
 
   // 渲染完成后：App 原生桥直接调（不需要手势）；旧 App 提示更新；
-  // 浏览器：window.print() 在部分手机浏览器上调不出预览，改走 pdf-lib 直出 PDF 文件下载
+  // 浏览器：渲染完直接下载 PDF 文件（下载不需要手势；失败则回退到手动点下载）
   function afterPrintReady(imgs) {
     try {
       if (window.AndroidPrint && typeof window.AndroidPrint.print === 'function') {
@@ -1944,7 +1959,16 @@
       alert('App 内打印需要更新到新版 App；也可以用手机浏览器打开下载 PDF。');
       return;
     }
-    showPrintReady(imgs);
+    var titleText = state.workviewTitle || (state.sutra ? state.sutra.title : '') || '';
+    var done = false;
+    var ui = showLoading('正在生成 PDF…', function () { done = true; });
+    downloadWorkPdf(imgs, titleText).then(function (fname) {
+      ui.hide();
+      if (!done) toast('PDF 已开始下载');
+    }).catch(function () {
+      ui.hide();
+      if (!done) showPrintReady(imgs); // 回退：手动点"下载 PDF"
+    });
   }
 
   // PDF 页眉图：标题 + 日期（canvas 画成图，避免 PDF 内嵌中文字体；透明底，衬出整页宣纸）
@@ -2027,9 +2051,10 @@
     document.body.appendChild(a);
     a.click();
     setTimeout(function () { try { URL.revokeObjectURL(a.href); } catch (e) {} a.remove(); }, 5000);
+    return fname;
   }
 
-  // "PDF 已准备好"确认框 → 下载 PDF 文件
+  // 回退：自动下载失败时，手动点"下载 PDF"
   function showPrintReady(imgs) {
     var titleText = state.workviewTitle || (state.sutra ? state.sutra.title : '') || '';
     var ov = document.createElement('div');
