@@ -5,7 +5,7 @@
 <script>
 /* 热更新引导（构建注入）：本地 localStorage 有新版 bundle 则直接载入 */
 (function(){
-  var V = 83;
+  var V = 84;
   window.__BUNDLE_V__ = V;
   function g(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
   function s(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
@@ -367,13 +367,15 @@ button:active { transform: scale(0.97); }
 
 /* 打印：屏幕隐藏，打印时只显示作品 */
 #print-sheet { display: none; }
+@page { margin: 0; }
 @media print {
   #app { display: none !important; }
   #print-sheet {
     display: block; color: #2b2118;
     background: linear-gradient(135deg, #f7f1e0 0%, #f1e7cd 60%, #e9dcc0 100%);
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
-    padding: 24px 20px;
+    padding: 24px 20px; margin: 0;
+    min-height: 100vh; box-sizing: border-box;
   }
   #print-sheet h1 { text-align: center; letter-spacing: 10px; font-size: 28px; }
   #print-sheet .print-meta { text-align: center; color: #555; font-size: 13px; margin-bottom: 16px; }
