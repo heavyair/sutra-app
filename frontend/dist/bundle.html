@@ -5,7 +5,7 @@
 <script>
 /* 热更新引导（构建注入）：本地 localStorage 有新版 bundle 则直接载入 */
 (function(){
-  var V = 75;
+  var V = 76;
   window.__BUNDLE_V__ = V;
   function g(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
   function s(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
@@ -133,7 +133,7 @@ button:active { transform: scale(0.97); }
   text-align: center; padding: 24px;
 }
 .home-kicker { color: var(--ink-dim); letter-spacing: 12px; font-size: 14px; margin-bottom: 18px; text-indent: 12px; }
-.home-title { font-size: 30px; letter-spacing: 6px; margin: 0 0 14px; font-weight: 700; text-indent: 6px; }
+.home-title { width: 100%; font-size: 32px; letter-spacing: 0.2em; text-indent: 0.2em; margin: 0 0 14px; font-weight: 700; white-space: nowrap; }
 .home-intro { color: var(--ink-dim); font-size: 14px; line-height: 1.9; max-width: 20em; margin-bottom: 38px; }
 .btn-home-primary {
   background: var(--gold); border: 1px solid var(--gold); color: #1a1611;
@@ -232,8 +232,10 @@ button:active { transform: scale(0.97); }
 .hidden { display: none !important; }
 #intro-overlay.fading { opacity: 0; }
 #intro-title {
-  font-size: 40px; letter-spacing: 14px; color: #3a2f1d;
-  margin-bottom: 28px; text-align: center; padding-left: 14px;
+  width: 100%;
+  font-size: 40px; letter-spacing: 0.35em; text-indent: 0.35em; color: #3a2f1d;
+  margin-bottom: 28px; text-align: center;
+  white-space: nowrap;
   text-shadow: 0 1px 0 rgba(255,255,255,.5);
 }
 #intro-para {
@@ -2600,6 +2602,29 @@ button:active { transform: scale(0.97); }
     });
   }
 
+  /* 单行标题自适应字号：不断行，从大往小缩到刚好放下 */
+  function fitOneLine(el, basePx, minPx) {
+    if (!el) return;
+    el.style.whiteSpace = 'nowrap';
+    var size = basePx;
+    el.style.fontSize = size + 'px';
+    var avail = el.clientWidth;
+    if (!avail) return; // 隐藏中，量不到
+    var guard = 0;
+    while (size > minPx && el.scrollWidth > avail && guard++ < 60) {
+      size -= 1;
+      el.style.fontSize = size + 'px';
+    }
+  }
+  function refitTitles() {
+    fitOneLine($('home-title'), 32, 15);
+    var ov = $('intro-overlay'), it = $('intro-title');
+    if (ov && it && !ov.classList.contains('hidden')) fitOneLine(it, 40, 18);
+  }
+  window.addEventListener('resize', refitTitles);
+  window.addEventListener('orientationchange', refitTitles);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(refitTitles);
+
   function renderHome(sutras) {
     // 首页：心经修行入口（只保留心经，取第一部）
     var s = (sutras && sutras[0]) || null;
@@ -2609,6 +2634,7 @@ button:active { transform: scale(0.97); }
     }
     state.homeSutra = s;
     $('home-title').textContent = '《' + s.title + '》';
+    fitOneLine($('home-title'), 32, 15);
     $('home-intro').textContent = s.intro || '';
     var dc = s.dedication_count || 0;
     $('home-dedicate').textContent = '🪷 回向' + (dc > 0 ? ' ' + dc : '');
@@ -2959,6 +2985,7 @@ button:active { transform: scale(0.97); }
     paraEl.style.display = 'none';
 
     titleEl.textContent = '《' + state.sutra.title + '》';
+    fitOneLine(titleEl, 40, 18);
 
     (async function () {
       await sleep(2000);                       // 经名显示 2 秒

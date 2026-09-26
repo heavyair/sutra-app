@@ -98,7 +98,7 @@ button:active { transform: scale(0.97); }
   text-align: center; padding: 24px;
 }
 .home-kicker { color: var(--ink-dim); letter-spacing: 12px; font-size: 14px; margin-bottom: 18px; text-indent: 12px; }
-.home-title { font-size: 30px; letter-spacing: 6px; margin: 0 0 14px; font-weight: 700; text-indent: 6px; }
+.home-title { width: 100%; font-size: 32px; letter-spacing: 0.2em; text-indent: 0.2em; margin: 0 0 14px; font-weight: 700; white-space: nowrap; }
 .home-intro { color: var(--ink-dim); font-size: 14px; line-height: 1.9; max-width: 20em; margin-bottom: 38px; }
 .btn-home-primary {
   background: var(--gold); border: 1px solid var(--gold); color: #1a1611;
@@ -197,8 +197,10 @@ button:active { transform: scale(0.97); }
 .hidden { display: none !important; }
 #intro-overlay.fading { opacity: 0; }
 #intro-title {
-  font-size: 40px; letter-spacing: 14px; color: #3a2f1d;
-  margin-bottom: 28px; text-align: center; padding-left: 14px;
+  width: 100%;
+  font-size: 40px; letter-spacing: 0.35em; text-indent: 0.35em; color: #3a2f1d;
+  margin-bottom: 28px; text-align: center;
+  white-space: nowrap;
   text-shadow: 0 1px 0 rgba(255,255,255,.5);
 }
 #intro-para {

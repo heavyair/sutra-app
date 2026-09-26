@@ -497,6 +497,29 @@
     });
   }
 
+  /* 单行标题自适应字号：不断行，从大往小缩到刚好放下 */
+  function fitOneLine(el, basePx, minPx) {
+    if (!el) return;
+    el.style.whiteSpace = 'nowrap';
+    var size = basePx;
+    el.style.fontSize = size + 'px';
+    var avail = el.clientWidth;
+    if (!avail) return; // 隐藏中，量不到
+    var guard = 0;
+    while (size > minPx && el.scrollWidth > avail && guard++ < 60) {
+      size -= 1;
+      el.style.fontSize = size + 'px';
+    }
+  }
+  function refitTitles() {
+    fitOneLine($('home-title'), 32, 15);
+    var ov = $('intro-overlay'), it = $('intro-title');
+    if (ov && it && !ov.classList.contains('hidden')) fitOneLine(it, 40, 18);
+  }
+  window.addEventListener('resize', refitTitles);
+  window.addEventListener('orientationchange', refitTitles);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(refitTitles);
+
   function renderHome(sutras) {
     // 首页：心经修行入口（只保留心经，取第一部）
     var s = (sutras && sutras[0]) || null;
@@ -506,6 +529,7 @@
     }
     state.homeSutra = s;
     $('home-title').textContent = '《' + s.title + '》';
+    fitOneLine($('home-title'), 32, 15);
     $('home-intro').textContent = s.intro || '';
     var dc = s.dedication_count || 0;
     $('home-dedicate').textContent = '🪷 回向' + (dc > 0 ? ' ' + dc : '');
@@ -856,6 +880,7 @@
     paraEl.style.display = 'none';
 
     titleEl.textContent = '《' + state.sutra.title + '》';
+    fitOneLine(titleEl, 40, 18);
 
     (async function () {
       await sleep(2000);                       // 经名显示 2 秒
