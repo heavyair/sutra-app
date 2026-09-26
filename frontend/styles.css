@@ -94,8 +94,8 @@ button:active { transform: scale(0.97); }
 .home-wrap {
   min-height: 82vh;
   display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  text-align: center; padding: 24px;
+  align-items: center; justify-content: flex-start;
+  text-align: center; padding: 34px 24px 24px;
 }
 .home-kicker { color: var(--ink-dim); letter-spacing: 12px; font-size: 14px; margin-bottom: 18px; text-indent: 12px; }
 .home-title { width: 100%; font-size: 32px; letter-spacing: 0.2em; text-indent: 0.2em; margin: 0 0 14px; font-weight: 700; white-space: nowrap; }
@@ -113,6 +113,17 @@ button:active { transform: scale(0.97); }
 .home-links { display: flex; align-items: center; gap: 12px; }
 .link-quiet { background: none; border: none; color: var(--ink-dim); font-size: 14px; letter-spacing: 2px; padding: 8px 4px; }
 .link-quiet:active { color: var(--gold); }
+/* 经书架：多部经文卡片 */
+#sutra-shelf { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 14px; margin-top: 18px; }
+.sutra-card {
+  position: relative; text-align: left;
+  background: var(--paper); border: 1px solid var(--line); border-radius: 12px;
+  padding: 18px 18px 14px;
+}
+.sutra-card:active { border-color: var(--gold); }
+.sutra-card-title { font-size: 21px; font-weight: 700; letter-spacing: 0.12em; margin-bottom: 8px; }
+.sutra-card-meta { font-size: 13px; color: var(--ink-dim); letter-spacing: 1px; }
+.sutra-card-dedicate { position: absolute; right: 12px; bottom: 8px; font-size: 13px; }
 .link-sep { color: var(--line); }
 
 .filter-row { display: flex; gap: 10px; padding: 14px 16px; }

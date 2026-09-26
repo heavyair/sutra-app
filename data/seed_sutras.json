@@ -15,5 +15,22 @@
     },
     "title": "般若波罗蜜多心经",
     "tradition": "buddhist"
+  },
+  {
+    "id": "wangshengzhou",
+    "title": "往生咒",
+    "tradition": "buddhist",
+    "intro": "拔一切业障根本得生净土陀罗尼。日常持诵、抄写，祈愿往生净土。",
+    "full_text": "南无阿弥多婆夜。哆他伽多夜。哆地夜他。阿弥利都婆毗。阿弥利哆。悉耽婆毗。阿弥唎哆。毗迦兰帝。阿弥唎哆。毗迦兰多。伽弥腻。伽伽那。枳多迦利。娑婆诃。",
+    "music": {
+      "mood": "空灵",
+      "root_midi": 57,
+      "tempo_bpm": 50,
+      "timbre": "soft_sine",
+      "gamma": {
+        "hz": 40,
+        "vol": 0.015
+      }
+    }
   }
 ]

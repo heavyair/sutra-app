@@ -270,10 +270,11 @@
   // 各屏的功能按钮清单（书写屏用自己的工具菜单，不走全局；顶栏已全部移除）
   function toolsFor(id) {
     if (id === 'screen-library') {
-      // 抄本入口收进工具菜单（首页只留开始抄写/继续）
+      // 抄本入口、上传经书收进工具菜单（首页只留经书架和继续上次）
       var items = [
         { label: '公开抄本', onClick: function () { openCollection('public'); } },
         { label: '我的抄本', onClick: function () { openCollection('mine'); } },
+        { label: '上传经书', onClick: openUploadDialog },
       ];
       if (!getToken()) items.push({ label: '登录', onClick: gotoLogin });
       return items;
@@ -529,7 +530,6 @@
     }
   }
   function refitTitles() {
-    fitOneLine($('home-title'), 32, 15);
     var ov = $('intro-overlay'), it = $('intro-title');
     if (ov && it && !ov.classList.contains('hidden')) fitOneLine(it, 40, 18);
   }
@@ -537,37 +537,51 @@
   window.addEventListener('orientationchange', refitTitles);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(refitTitles);
 
+  /* 经书架：多部经文卡片列表。点卡片主体直达抄写开新作；点 🪷 进该经回向墙 */
   function renderHome(sutras) {
-    // 首页：心经修行入口（只保留心经，取第一部）
-    var s = (sutras && sutras[0]) || null;
-    if (!s) {
-      $('home-title').textContent = '经文准备中';
-      return;
+    var shelf = $('sutra-shelf');
+    shelf.innerHTML = '';
+    (sutras || []).forEach(function (s) {
+      var card = document.createElement('div');
+      card.className = 'sutra-card';
+      var dc = s.dedication_count || 0;
+      card.innerHTML =
+        '<div class="sutra-card-title">《' + escapeHtml(s.title) + '》</div>' +
+        '<div class="sutra-card-meta">共 ' + (s.char_count || 0) + ' 字' +
+        '<span class="sutra-card-prog" data-sutra="' + escapeHtml(s.id) + '"></span>' +
+        (s.mine ? ' · 我上传的' : '') + '</div>' +
+        '<button class="sutra-card-dedicate link-quiet">🪷 回向' + (dc > 0 ? ' ' + dc : '') + '</button>';
+      card.addEventListener('click', function () { openSutra(s.id); });
+      card.querySelector('.sutra-card-dedicate').addEventListener('click', function (e) {
+        e.stopPropagation();
+        openDedicationWall(s.id, s.title);
+      });
+      shelf.appendChild(card);
+    });
+    if (!sutras || !sutras.length) {
+      shelf.innerHTML = '<div class="sutra-card-meta">经文准备中…</div>';
     }
-    state.homeSutra = s;
-    $('home-title').textContent = '《' + s.title + '》';
-    fitOneLine($('home-title'), 32, 15);
-    $('home-intro').textContent = s.intro || '';
-    var dc = s.dedication_count || 0;
-    $('home-dedicate').textContent = '🪷 回向' + (dc > 0 ? ' ' + dc : '');
-    // 开始抄写：直达抄写开新作（与原来点经书卡片一致）
-    $('home-start').onclick = function () { openSutra(s.id); };
-    $('home-dedicate').onclick = function () { openDedicationWall(s.id, s.title); };
-    // 继续上次：找最近一部没写完的作品（登录/匿名都支持）
+    // 每部经的抄写进度 + 顶部"继续上次"（跨经文，取最近未写完的一部）
     var rb = $('home-resume');
     rb.classList.add('hidden');
     rb.onclick = null;
     api('/api/my/works').then(function (res) {
       var works = (res && res.ok && res.works) || [];
-      var unfinished = null;
-      for (var i = 0; i < works.length; i++) {
-        var w = works[i];
-        if (w.sutra_id === s.id && (w.chars_done || 0) < (w.chars_total || 0)) { unfinished = w; break; }
+      var bySutra = {}, first = null;
+      works.forEach(function (w) {
+        if (!bySutra[w.sutra_id]) bySutra[w.sutra_id] = w; // 已按 updated_at 倒序
+        if (!first && (w.chars_done || 0) < (w.chars_total || 0)) first = w;
+      });
+      Object.keys(bySutra).forEach(function (sid) {
+        var el = shelf.querySelector('.sutra-card-prog[data-sutra="' + sid + '"]');
+        var w = bySutra[sid];
+        if (el && w) el.textContent = ' · 已抄 ' + (w.chars_done || 0) + ' / ' + (w.chars_total || 0);
+      });
+      if (first) {
+        rb.textContent = '继续上次 · ' + first.chars_done + ' / ' + first.chars_total + ' 字';
+        rb.classList.remove('hidden');
+        rb.onclick = function () { openWork(first.id); };
       }
-      if (!unfinished) return;
-      rb.textContent = '继续上次 · ' + unfinished.chars_done + ' / ' + unfinished.chars_total + ' 字';
-      rb.classList.remove('hidden');
-      rb.onclick = function () { openWork(unfinished.id); };
     }).catch(function () {});
   }
 
