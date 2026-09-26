@@ -1807,6 +1807,36 @@
 
   /* ---------- 11. 生成 PDF（系统打印 → 存为 PDF） ---------- */
   // 把已写字的笔迹渲染成图片（作品查看器用：按落笔记录重画，取景复刻书写时的成品快照）
+  function buildPrintSheet(imgs) {
+    var ps = $('print-sheet');
+    var d = new Date();
+    var title = state.workviewTitle || (state.sutra ? state.sutra.title : '') || '';
+    var html = '<h1>《' + escapeHtml(title) + '》</h1>' +
+      '<div class="print-meta">' +
+      d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate() + '</div>' +
+      '<div class="print-grid">';
+    (imgs || []).forEach(function (src) {
+      if (src) html += '<div class="sheet-cell"><img src="' + src + '"></div>';
+    });
+    ps.innerHTML = html + '</div>';
+  }
+
+  // App 内 WebView 没有 window.print：走原生打印桥（系统打印对话框 → 存为 PDF）；
+  // 浏览器里保持 window.print()
+  function doPrint() {
+    try {
+      if (window.AndroidPrint && typeof window.AndroidPrint.print === 'function') {
+        window.AndroidPrint.print();
+        return;
+      }
+    } catch (e) {}
+    if (isNativeApp()) {
+      alert('App 内打印需要更新到新版 App；也可以用手机浏览器打开再打印存为 PDF。');
+      return;
+    }
+    window.print();
+  }
+
   function printWork() {
     // 与整纸同一套管线：通用格 + 标点不占格（贴在上字右下角）；按全文顺序从笔迹记录渲染
     var full = state.fullChars || state.chars || [];
@@ -1824,7 +1854,7 @@
       var snap = (state.workImages || []).filter(Boolean);
       if (snap.length) {
         buildPrintSheet(snap);
-        setTimeout(function () { window.print(); }, 300);
+        setTimeout(doPrint, 300);
         return;
       }
       alert('还没有写完的字'); return;
@@ -1847,7 +1877,7 @@
       } else {
         ui.hide();
         buildPrintSheet(imgs);
-        setTimeout(function () { window.print(); }, 300);
+        setTimeout(doPrint, 300);
       }
     }
     setTimeout(chunk, 50);
