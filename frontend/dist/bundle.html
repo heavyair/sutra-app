@@ -5,7 +5,7 @@
 <script>
 /* 热更新引导（构建注入）：本地 localStorage 有新版 bundle 则直接载入 */
 (function(){
-  var V = 87;
+  var V = 88;
   window.__BUNDLE_V__ = V;
   function g(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
   function s(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
@@ -382,11 +382,8 @@ button:active { transform: scale(0.97); }
   }
   #print-sheet h1 { text-align: center; letter-spacing: 10px; font-size: 28px; }
   #print-sheet .print-meta { text-align: center; color: #555; font-size: 13px; margin-bottom: 16px; }
-  #print-sheet .print-grid { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
-  #print-sheet .print-grid .sheet-cell.char { flex: 0 0 calc((100% - 56px) / 8); aspect-ratio: 1; }
-  #print-sheet .print-grid .sheet-cell.char img { width: 100%; height: 100%; display: block; }
-  #print-sheet .print-grid .sheet-cell.punct { flex: 0 0 auto; }
-  #print-sheet .print-grid .sheet-cell.punct img { height: 100%; width: auto; display: block; }
+  #print-sheet .print-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; }
+  #print-sheet .print-grid img { width: 100%; }
 }
 
 /* ---- 作品（v8）：画廊卡片 / 作品查看 / 回放 ---- */
@@ -548,13 +545,10 @@ button:active { transform: scale(0.97); }
   text-align: center; white-space: nowrap; overflow: hidden;
   font-size: 11px; color: #8a7a5f; margin-bottom: 12px;
 }
-.sheet-grid { display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch; }
-/* 字格：通用正方形（全部字形边框的最大者），同一比例，无格线；标点为实测宽度的窄槽，插在两字之间 */
-.sheet-cell { margin: 0; line-height: 0; }
-.sheet-cell.char { flex: 0 0 calc((100% - 42px) / 8); aspect-ratio: 1; }
-.sheet-cell.char img { width: 100%; height: 100%; display: block; }
-.sheet-cell.punct { flex: 0 0 auto; }
-.sheet-cell.punct img { height: 100%; width: auto; display: block; }
+.sheet-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+/* 字格：通用正方形（全部字形边框的最大者），同一比例，无格线 */
+.sheet-cell { margin: 0; line-height: 0; aspect-ratio: 1; }
+.sheet-cell img { width: 100%; height: 100%; display: block; }
 .sheet-cell.burned { box-shadow: inset 0 0 10px rgba(110,100,75,.4); border-radius: 4px; }
 .sheet-cell.burned img { object-fit: cover; }
 .work-empty-hint { color: var(--ink-dim); text-align: center; font-size: 13px; padding: 6px 0 20px; }
@@ -2076,8 +2070,9 @@ button:active { transform: scale(0.97); }
   };
 
   /* 整纸通用格：所有字共用 side×side 正方形（含 25% 留白），各自以包围盒中心为锚居中，
-   * 同一比例、透明底、无格线。side 取全部字形边框的最大值，由调用方先量好传入。 */
-  WritingPad.renderSheetCell = function (rec, ch, fontStack, side, box) {
+   * 同一比例、透明底、无格线。side 取全部字形边框的最大值，由调用方先量好传入。
+   * trailPunct：尾随标点（不占格，贴在本字格右下角，约 0.32 格大小，与字保持间距）。 */
+  WritingPad.renderSheetCell = function (rec, ch, fontStack, side, box, trailPunct) {
     box = box || WritingPad.glyphBox(ch, fontStack, (rec && rec.ar) || null);
     var W = box.W, H = box.H, px = box.px, cx = box.cx, cy = box.cy, fs = box.fs;
     var cv = document.createElement('canvas');
@@ -2100,55 +2095,16 @@ button:active { transform: scale(0.97); }
     tmp.width = out; tmp.height = out;
     var t2d = tmp.getContext('2d');
     t2d.drawImage(cv, sx, sy, side, side, 0, 0, out, out);
-    try { return tmp.toDataURL('image/png'); } catch (e2) { return ''; }
-  };
-
-  // 标点窄槽：标点不再贴进字格，而是独立成项插在两字之间、沉底。
-  // 实测墨迹宽度决定槽宽（墨宽 + 两侧留白），墨迹水平居中、墨底沉到槽底附近。
-  // 返回 {src, w}（w 为输出像素宽，调用方按 w/outH 比例显示）。测不到墨返回 {src:'', w:0}。
-  var _punctSlotCache = { key: '', map: {} };
-  WritingPad.renderPunctSlot = function (ch, fontStack, outH) {
-    outH = outH || 200;
-    var ck = (ch || '') + '|' + String(fontStack) + '|' + outH;
-    var hit = _punctSlotCache.map[ck];
-    if (hit) return hit;
-    var fsPx = Math.round(outH * 0.32);
-    var fs = fontStack || '';
-    var t = document.createElement('canvas'); t.width = outH; t.height = outH;
-    var c = t.getContext('2d');
-    c.font = fsPx + 'px ' + fs;
-    c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.fillStyle = '#2b2118';
-    c.fillText(ch || '', outH / 2, outH / 2);
-    var d;
-    try { d = c.getImageData(0, 0, outH, outH).data; }
-    catch (e) { return { src: '', w: 0 }; }
-    var x0 = outH, x1 = -1, y1 = -1, x, y, o;
-    for (y = 0; y < outH; y++) {
-      o = y * outH * 4;
-      for (x = 0; x < outH; x++) {
-        if (d[o + x * 4 + 3] > 8) {
-          if (x < x0) x0 = x;
-          if (x > x1) x1 = x;
-          if (y > y1) y1 = y;
-        }
-      }
+    if (trailPunct) {
+      // 标点不占格：贴在上一个字格的右下角（约 0.32 格，与书写时 0.55x 印章同比例）；
+      // 锚点推到最右安全位 (0.83, 0.83)：再右会被格边裁掉（破折号等宽标点半宽约 0.16 格）
+      t2d.font = (out * 0.32) + 'px ' + fs;
+      t2d.textAlign = 'center';
+      t2d.textBaseline = 'middle';
+      t2d.fillStyle = '#2b2118';
+      t2d.fillText(trailPunct, out * 0.83, out * 0.83);
     }
-    if (x1 < 0) return { src: '', w: 0 };
-    var pad = Math.max(4, Math.round(outH * 0.05));
-    var w = Math.ceil((x1 - x0 + 1) + pad * 2);
-    var cv = document.createElement('canvas'); cv.width = w; cv.height = outH;
-    var g = cv.getContext('2d');
-    g.font = fsPx + 'px ' + fs;
-    g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillStyle = '#2b2118';
-    var inkCx = (x0 + x1) / 2;
-    var targetBottom = outH - Math.round(outH * 0.06);
-    g.fillText(ch || '', (outH / 2) + (w / 2 - inkCx), (outH / 2) + (targetBottom - y1));
-    var r = { src: '', w: w };
-    try { r.src = cv.toDataURL('image/png'); } catch (e2) { return { src: '', w: 0 }; }
-    _punctSlotCache.map[ck] = r;
-    return r;
+    try { return tmp.toDataURL('image/png'); } catch (e2) { return ''; }
   };
 
   WritingPad.renderCropped = function (rec, ch, fontStack) {
@@ -2923,10 +2879,10 @@ button:active { transform: scale(0.97); }
   function openSutra(id, done) {
     // 新经：手势链内先解锁音频，再拉经文，直达抄写界面
     autoStartMusic();
-    var ctl = new AbortController();
-    var ui = showLoading('正在加载经文…', function () { ctl.abort(); stopPreMusic(); });
-    api('/api/sutra/' + encodeURIComponent(id), { signal: ctl.signal }).then(function (res) {
-      ui.hide();
+    var _sutraCtl = new AbortController();
+    var _sutraUi = showLoading('正在加载经文…', function () { _sutraCtl.abort(); stopPreMusic(); });
+    api('/api/sutra/' + encodeURIComponent(id), { signal: _sutraCtl.signal }).then(function (res) {
+      _sutraUi.hide();
       if (done) done();
       if (!res.ok) { stopPreMusic(); alert(res.message || '加载失败，请重试'); return; }
       var clean = (res.sutra.full_text || '').replace(/\s+/g, '');
@@ -2950,7 +2906,7 @@ button:active { transform: scale(0.97); }
       music.setConfig(res.sutra.music_config || {});
       startWriting(state.flowToken); // 直达抄写（字体可在书写屏 ☰ → 字体 中换）
     }).catch(function (err) {
-      ui.hide();
+      _sutraUi.hide();
       if (done) done();
       if (err && err.name === 'AbortError') return; // 用户取消，不打扰
       stopPreMusic();
@@ -3752,22 +3708,24 @@ button:active { transform: scale(0.97); }
   }
   function ashImg() { var img = document.createElement('img'); img.src = randomAsh(); return img; }
 
-  // 整纸 / PDF 共用布局：通用格（全部字形边框的最大者）+ 标点独立窄槽。
-  // 标点不再贴进字格：实测墨宽，插在两字之间、沉底（渲染时定槽宽）。
+  // 整纸 / PDF 共用布局：通用格（全部字形边框的最大者）+ 每格的尾随标点。
+  // 标点不占格：跳过标点格，标点贴在上一个字格右下角（须是紧邻的下一个序号）。
   function sheetLayout(cells, fontStack, isBurned) {
     var items = [];
     var boxByK = {}, side = 0;
     for (var k = 0; k < cells.length; k++) {
       var c = cells[k];
       if (c.ash || (isBurned && isBurned(c.pos))) { items.push({ pos: c.pos, ash: true }); continue; }
+      if (isPunct(c.ch)) continue;
       var saved = c.saved; if (!saved) continue;
-      if (isPunct(c.ch)) { items.push({ pos: c.pos, ch: c.ch, punct: true }); continue; }
       var ar = (saved.strokes && saved.strokes.ar) || null;
       var bk = c.ch + '|' + (ar || '');
       var b = boxByK[bk] || (boxByK[bk] = WritingPad.glyphBox(c.ch, fontStack, ar));
       if (b.bw > side) side = b.bw;
       if (b.bh > side) side = b.bh;
-      items.push({ pos: c.pos, ch: c.ch, saved: saved, box: b });
+      var trail = null, nx = cells[k + 1];
+      if (nx && !nx.ash && nx.pos === c.pos + 1 && isPunct(nx.ch) && nx.saved) trail = nx.ch;
+      items.push({ pos: c.pos, ch: c.ch, saved: saved, box: b, trail: trail });
     }
     side = side * 1.5 || 200; // 四周各留 25%
     return { items: items, side: side };
@@ -3783,9 +3741,9 @@ button:active { transform: scale(0.97); }
     if (_sheetCropCache.key !== skey) _sheetCropCache = { key: skey, map: {} };
     var rec = (it.saved && it.saved.strokes) || {};
     var e = _sheetCropCache.map[it.pos];
-    if (e && e.rec === rec && e.fs === fs) return e.src;
-    var src = WritingPad.renderSheetCell(rec, it.ch, fs, side, it.box);
-    _sheetCropCache.map[it.pos] = { rec: rec, fs: fs, src: src };
+    if (e && e.rec === rec && e.fs === fs && e.trail === it.trail) return e.src;
+    var src = WritingPad.renderSheetCell(rec, it.ch, fs, side, it.box, it.trail);
+    _sheetCropCache.map[it.pos] = { rec: rec, fs: fs, trail: it.trail, src: src };
     return src;
   }
   function sheetCellImg(it, side) {
@@ -3793,28 +3751,6 @@ button:active { transform: scale(0.97); }
     img.src = sheetCellSrc(it, side);
     img.alt = it.ch || '';
     return img;
-  }
-
-  // 整纸条目内容：字 = 通用格大图；标点 = 实测宽度的窄槽（沉底）。返回 {el, punct}
-  function sheetItemContent(it, side, fontStack) {
-    var d = mkEl('div', 'sheet-cell');
-    if (it.ash) {
-      d.appendChild(ashImg());
-      d.classList.add('char', 'burned');
-      return { el: d, punct: false };
-    }
-    if (it.punct) {
-      var ps = WritingPad.renderPunctSlot(it.ch, fontStack, 200);
-      if (!ps.src) return null; // 测不到墨（如空白），不占位
-      d.classList.add('punct');
-      var pi = document.createElement('img');
-      pi.src = ps.src; pi.alt = it.ch || '';
-      d.appendChild(pi);
-      return { el: d, punct: true };
-    }
-    d.classList.add('char');
-    d.appendChild(sheetCellImg(it, side));
-    return { el: d, punct: false };
   }
 
   // 双视图组件：withToggle 为 true 时才显示 逐字|整纸 切换条（仪式用）；
@@ -3941,12 +3877,16 @@ button:active { transform: scale(0.97); }
     var fontStack = (state.font && state.font.stack) || '';
     var lay = sheetLayout(cells, fontStack, ctx.isBurned);
     lay.items.forEach(function (it) {
-      var r = sheetItemContent(it, lay.side, fontStack);
-      if (!r) return;
-      var d = r.el;
-      if (!r.punct && !it.ash && ctx.onTap) {
-        d.style.cursor = 'pointer';
-        (function (pos) { d.addEventListener('click', function () { ctx.onTap(pos); }); })(it.pos);
+      var d = mkEl('div', 'sheet-cell');
+      if (it.ash) {
+        d.appendChild(ashImg());
+        d.classList.add('burned');
+      } else {
+        d.appendChild(sheetCellImg(it, lay.side));
+        if (ctx.onTap) {
+          d.style.cursor = 'pointer';
+          (function (pos) { d.addEventListener('click', function () { ctx.onTap(pos); }); })(it.pos);
+        }
       }
       api.cardByPos[it.pos] = d;
       grid.appendChild(d);
@@ -4010,9 +3950,9 @@ button:active { transform: scale(0.97); }
   }
 
   /* ---------- 11. 生成 PDF（系统打印 → 存为 PDF） ---------- */
-  // 与整纸同一套管线：通用格 + 标点窄槽；按全文顺序从笔迹记录渲染。
-  // 返回渲染任务数组 [{it, side, fontStack}]，调用方分片执行以保持界面响应。
-  function collectSheetJobs() {
+  // 把已写字的笔迹渲染成图片（作品查看器用：按落笔记录重画，取景复刻书写时的成品快照）
+  function printWork() {
+    // 与整纸同一套管线：通用格 + 标点不占格（贴在上字右下角）；按全文顺序从笔迹记录渲染
     var full = state.fullChars || state.chars || [];
     var byPos = state.workCharsByPos || {};
     var fontStack = (state.font && state.font.stack) || '';
@@ -4022,51 +3962,12 @@ button:active { transform: scale(0.97); }
       if (saved) cells.push({ pos: i, ch: saved.ch || full[i], saved: saved });
     }
     var lay = sheetLayout(cells, fontStack, null);
-    var jobs = [];
-    lay.items.forEach(function (it) {
-      if (it.ash) return;
-      jobs.push({ it: it, side: lay.side, fontStack: fontStack });
-    });
-    return jobs;
-  }
-
-  // 执行一个渲染任务 → {src, w, punct, ch}（w 为 200 单位下的像素宽；失败返回 null）
-  function runSheetJob(job) {
-    var it = job.it;
-    if (it.punct) {
-      var ps = WritingPad.renderPunctSlot(it.ch, job.fontStack, 200);
-      if (!ps.src) return null;
-      return { src: ps.src, w: ps.w, punct: true, ch: it.ch };
-    }
-    var src = sheetCellSrc(it, job.side);
-    if (!src) return null;
-    return { src: src, w: 200, punct: false, ch: it.ch };
-  }
-
-  function buildPrintSheet(items) {
-    var ps = $('print-sheet');
-    var d = new Date();
-    var title = state.workviewTitle || (state.sutra ? state.sutra.title : '') || '';
-    var html = '<h1>《' + escapeHtml(title) + '》</h1>' +
-      '<div class="print-meta">' +
-      d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate() + '</div>' +
-      '<div class="print-grid">';
-    items.forEach(function (r) {
-      if (!r || !r.src) return;
-      html += '<div class="sheet-cell ' + (r.punct ? 'punct' : 'char') + '">' +
-        '<img src="' + r.src + '" alt="' + escapeHtml(r.ch || '') + '"></div>';
-    });
-    ps.innerHTML = html + '</div>';
-  }
-
-  function printWork() {
-    var jobs = collectSheetJobs();
+    var jobs = lay.items.filter(function (it) { return !it.ash; });
     if (!jobs.length) {
-      // 笔迹记录是唯一真相源；快照只做兜底
-      if (state.workImages && state.workImages.length) {
-        buildPrintSheet(state.workImages.filter(Boolean).map(function (s) {
-          return { src: s, w: 200, punct: false, ch: '' };
-        }));
+      // 笔迹记录是唯一真相源（含刚写的字）；快照只做兜底
+      var snap = (state.workImages || []).filter(Boolean);
+      if (snap.length) {
+        buildPrintSheet(snap);
         setTimeout(function () { window.print(); }, 300);
         return;
       }
@@ -4075,13 +3976,13 @@ button:active { transform: scale(0.97); }
     // 分片渲染：避免长任务冻住界面；可取消
     var cancelled = false;
     var ui = showLoading('正在生成 PDF…', function () { cancelled = true; });
-    var out = [], i = 0;
+    var imgs = [], i = 0;
     function chunk() {
       if (cancelled) return; // 取消时遮罩已收起
       var t0 = Date.now();
       while (i < jobs.length && Date.now() - t0 < 150) {
-        var r = runSheetJob(jobs[i]);
-        if (r) out.push(r);
+        var src = sheetCellSrc(jobs[i], lay.side); // data-URL 字符串（buildPrintSheet 按字符串拼接）
+        if (src) imgs.push(src);
         i++;
       }
       if (i < jobs.length) {
@@ -4089,7 +3990,7 @@ button:active { transform: scale(0.97); }
         setTimeout(chunk, 0);
       } else {
         ui.hide();
-        buildPrintSheet(out);
+        buildPrintSheet(imgs);
         setTimeout(function () { window.print(); }, 300);
       }
     }
@@ -4133,13 +4034,13 @@ button:active { transform: scale(0.97); }
     $('collection-groups').innerHTML = '<div class="work-empty-hint">加载中…</div>';
     showScreen('screen-collection');
     var url = mode === 'mine' ? '/api/my/works' : '/api/works?limit=60';
-    var ctl = new AbortController();
-    var ui = showLoading('正在加载抄本…', function () { ctl.abort(); });
-    api(url, { signal: ctl.signal }).then(function (res) {
-      ui.hide();
+    var _colCtl = new AbortController();
+    var _colUi = showLoading('正在加载抄本…', function () { _colCtl.abort(); });
+    api(url, { signal: _colCtl.signal }).then(function (res) {
+      _colUi.hide();
       renderCollection((res && res.ok && res.works) || []);
     }).catch(function (err) {
-      ui.hide();
+      _colUi.hide();
       if (err && err.name === 'AbortError') return; // 用户取消
       renderCollection([]);
     });
@@ -5134,36 +5035,8 @@ button:active { transform: scale(0.97); }
   var SHEETPLAY_OUT = 200; // 字格画布分辨率（CSS 缩放显示）
 
   // 在字格画布上逐段重演一字：取景与 renderSheetCell 同管线（通用格裁剪），
-  // 播完静止态与整纸视图一致。标点项为窄槽静态盖印（与整纸同位置）。返回取消函数。
+  // 播完静止态与整纸视图一致。返回取消函数。
   function playSheetChar(canvas, it, fontStack, side, onDone) {
-    var OUT = SHEETPLAY_OUT;
-    var timer = null, raf = 0, done = false;
-    function cancel() {
-      done = true;
-      if (timer) { clearTimeout(timer); timer = null; }
-      if (raf) {
-        if (window.cancelAnimationFrame) window.cancelAnimationFrame(raf);
-        else clearTimeout(raf);
-        raf = 0;
-      }
-    }
-    if (it.punct) {
-      // 标点窄槽：无动画，静态呈现一拍
-      var ps = WritingPad.renderPunctSlot(it.ch, fontStack, OUT);
-      if (!ps.src) { timer = setTimeout(onDone, 200); return cancel; }
-      var pimg = new Image();
-      pimg.onload = function () {
-        if (!sheetplayActive || done) return;
-        done = true;
-        var ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(pimg, 0, 0);
-        timer = setTimeout(onDone, 450);
-      };
-      pimg.onerror = function () { if (!done) { done = true; timer = setTimeout(onDone, 200); } };
-      pimg.src = ps.src;
-      return cancel;
-    }
     var ch = it.ch;
     var rec = (it.saved && it.saved.strokes) || {};
     var box = it.box || WritingPad.glyphBox(ch, fontStack, rec.ar);
@@ -5174,14 +5047,24 @@ button:active { transform: scale(0.97); }
     var bcx = box.bx + box.bw / 2, bcy = box.by + box.bh / 2;
     var sx = Math.max(0, Math.min(W - side, Math.round(bcx - side / 2)));
     var sy = Math.max(0, Math.min(H - side, Math.round(bcy - side / 2)));
+    var OUT = SHEETPLAY_OUT;
     var ctx = canvas.getContext('2d');
     function blit() {
       ctx.clearRect(0, 0, OUT, OUT);
       ctx.drawImage(cv, sx, sy, side, side, 0, 0, OUT, OUT);
     }
+    var timer = null, raf = 0, done = false;
     function finish() {
       if (done) return; done = true;
       blit();
+      if (it.trail) { // 尾随标点：贴右下角（与整纸同比例同位置，锚点最右安全位）
+        ctx.save();
+        ctx.font = (OUT * 0.32) + 'px ' + box.fs;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#2b2118';
+        ctx.fillText(it.trail, OUT * 0.83, OUT * 0.83);
+        ctx.restore();
+      }
       timer = setTimeout(onDone, 220);
     }
     if (rec.auto === 'punct') {
@@ -5233,7 +5116,15 @@ button:active { transform: scale(0.97); }
         })(window.performance && performance.now ? performance.now() : Date.now());
       }
     }
-    return cancel;
+    return function () {
+      done = true;
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (raf) {
+        if (window.cancelAnimationFrame) window.cancelAnimationFrame(raf);
+        else clearTimeout(raf);
+        raf = 0;
+      }
+    };
   }
 
   function openSheetPlay() {
@@ -5248,25 +5139,14 @@ button:active { transform: scale(0.97); }
     if (!cells.length) { alert('还没有写完的字'); return; }
     var lay = sheetLayout(cells, fontStack, null);
     var items = lay.items.filter(function (it) { return !it.ash; });
-    // 测不到墨的标点（如空白符）不占一拍
-    items = items.filter(function (it) {
-      if (!it.punct) return true;
-      var ps = WritingPad.renderPunctSlot(it.ch, fontStack, SHEETPLAY_OUT);
-      return !!(ps && ps.src);
-    });
     if (!items.length) { alert('还没有写完的字'); return; }
     var grid = $('sheetplay-grid');
     grid.innerHTML = '';
     var cellEls = items.map(function (it) {
       var d = document.createElement('div');
-      d.className = 'sheet-cell' + (it.punct ? ' punct' : ' char');
+      d.className = 'sheet-cell';
       var cv = document.createElement('canvas');
-      if (it.punct) {
-        cv.width = WritingPad.renderPunctSlot(it.ch, fontStack, SHEETPLAY_OUT).w || SHEETPLAY_OUT;
-      } else {
-        cv.width = SHEETPLAY_OUT;
-      }
-      cv.height = SHEETPLAY_OUT;
+      cv.width = SHEETPLAY_OUT; cv.height = SHEETPLAY_OUT;
       d.appendChild(cv);
       grid.appendChild(d);
       return { el: d, cv: cv };
@@ -5275,12 +5155,11 @@ button:active { transform: scale(0.97); }
     $('sheetplay-overlay').classList.remove('hidden');
     sheetplayActive = true;
     sheetplayStopAudio = playWorkAudio({ tempo: replayTempoFor(items, 1200) });
-    var idx = 0, charCount = 0;
-    var charTotal = items.filter(function (it) { return !it.punct; }).length;
+    var idx = 0;
     var step = function () {
       if (!sheetplayActive) return;
       if (idx >= items.length) {
-        $('sheetplay-label').textContent = '放映结束 · 共 ' + charTotal + ' 字';
+        $('sheetplay-label').textContent = '放映结束 · 共 ' + items.length + ' 字';
         sheetplayActive = false;
         return;
       }
@@ -5288,12 +5167,7 @@ button:active { transform: scale(0.97); }
       var it = items[k], ce = cellEls[k];
       ce.el.classList.add('playing');
       try { ce.el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
-      if (it.punct) {
-        $('sheetplay-label').textContent = '标点 · ' + it.ch + '（' + (k + 1) + '/' + items.length + '）';
-      } else {
-        charCount++;
-        $('sheetplay-label').textContent = '第 ' + charCount + ' 字 · ' + it.ch + '（' + (k + 1) + '/' + items.length + '）';
-      }
+      $('sheetplay-label').textContent = '第 ' + (k + 1) + ' 字 · ' + it.ch + '（' + (k + 1) + '/' + items.length + '）';
       sheetplayCancel = playSheetChar(ce.cv, it, fontStack, lay.side, function () {
         ce.el.classList.remove('playing');
         step();
