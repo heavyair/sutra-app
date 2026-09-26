@@ -1947,14 +1947,12 @@
     showPrintReady(imgs);
   }
 
-  // PDF 页眉图：标题 + 日期（canvas 画成图，避免 PDF 内嵌中文字体）
+  // PDF 页眉图：标题 + 日期（canvas 画成图，避免 PDF 内嵌中文字体；透明底，衬出整页宣纸）
   function makePdfHeader(titleText) {
     var W = 1600, H = 210;
     var cv = document.createElement('canvas');
     cv.width = W; cv.height = H;
     var c = cv.getContext('2d');
-    c.fillStyle = '#f4eddc';
-    c.fillRect(0, 0, W, H);
     var d = new Date();
     var fs = (state.font && state.font.stack) || '"Kaiti SC","KaiTi","STKaiti",serif';
     c.textAlign = 'center'; c.textBaseline = 'middle';
@@ -1971,6 +1969,20 @@
     return cv.toDataURL('image/png');
   }
 
+  // 宣纸底：整页铺满（v93 之前靠打印 CSS 铺底，改直出 PDF 时漏掉了；与打印版同款渐变）
+  function makePaperBg() {
+    var cv = document.createElement('canvas');
+    cv.width = 595; cv.height = 842;
+    var c = cv.getContext('2d');
+    var g = c.createLinearGradient(0, 0, 595, 842);
+    g.addColorStop(0, '#f7f1e0');
+    g.addColorStop(0.6, '#f1e7cd');
+    g.addColorStop(1, '#e9dcc0');
+    c.fillStyle = g;
+    c.fillRect(0, 0, 595, 842);
+    return cv.toDataURL('image/png');
+  }
+
   // 用 pdf-lib 把字图拼成 A4 PDF 并下载（8 列，与整纸/打印同版式）
   async function downloadWorkPdf(imgs, titleText) {
     var PDFLib = window.PDFLib;
@@ -1978,6 +1990,7 @@
     var doc = await PDFLib.PDFDocument.create();
     var PW = 595.28, PH = 841.89, M = 36, COLS = 8;
     var cell = (PW - M * 2) / COLS;
+    var bgImg = await doc.embedPng(makePaperBg());
     var headerSrc = makePdfHeader(titleText);
     var headerImg = await doc.embedPng(headerSrc);
     var headerW = PW - M * 2;
@@ -1992,6 +2005,7 @@
     var n = 0;
     while (n < imgs.length) {
       var page = doc.addPage([PW, PH]);
+      page.drawImage(bgImg, { x: 0, y: 0, width: PW, height: PH }); // 宣纸铺满整页
       var yTop = PH - M;
       page.drawImage(headerImg, { x: M, y: yTop - headerH, width: headerW, height: headerH });
       var gy = yTop - headerH - gapH;
