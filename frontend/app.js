@@ -557,7 +557,7 @@
           '<div class="sutra-card-title">' + escapeHtml(s.title) + '</div>' +
           '<div class="sutra-card-seal">抄</div>' +
         '</div>';
-      card.addEventListener('click', function () { openSutra(s.id); });
+      card.addEventListener('click', function () { chooseWorkForSutra(s); });
       card.querySelector('.sutra-card-dedicate').addEventListener('click', function (e) {
         e.stopPropagation();
         openDedicationWall(s.id, s.title);
@@ -751,6 +751,60 @@
   }
 
   /* ---------- 4. 点经文：永远直达抄写（开一份新作品；旧作去「我的抄本」续写/欣赏） ---------- */
+  // 点经书卡：若有未完成的抄本，先让用户选（继续旧作 / 新开一篇）；多篇按更新时间倒序
+  function chooseWorkForSutra(s) {
+    autoStartMusic();
+    var ctl = new AbortController();
+    var ui = showLoading('正在查找未完成的抄本…', function () { ctl.abort(); stopPreMusic(); });
+    api('/api/my/works', { signal: ctl.signal }).then(function (res) {
+      ui.hide();
+      var works = (res && res.ok && res.works) || [];
+      var pending = works.filter(function (w) {
+        return w.sutra_id === s.id && (w.chars_done || 0) < (w.chars_total || 0);
+      });
+      if (!pending.length) { openSutra(s.id); return; }
+      showResumeChooser(s, pending);
+    }).catch(function () {
+      ui.hide();
+      stopPreMusic();
+      alert('加载失败，请重试');
+    });
+  }
+
+  function closeResumeChooser() {
+    var ov = $('resume-overlay');
+    if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+  }
+
+  function showResumeChooser(s, pending) {
+    closeResumeChooser();
+    var ov = document.createElement('div');
+    ov.id = 'resume-overlay';
+    ov.className = 'picker-overlay';
+    var html = '<div class="picker-card"><h3>《' + escapeHtml(s.title) + '》</h3>' +
+      '<p class="picker-hint">有未完成的抄本，继续哪一篇？</p><div class="resume-list">';
+    pending.forEach(function (w) {
+      html += '<button class="pick-card resume-item" data-wid="' + w.id + '">' +
+        '<span><span class="pick-name">' + escapeHtml(fmtTime(w.updated_at)) + '</span>' +
+        '<span class="pick-desc" style="display:block">已抄 ' + (w.chars_done || 0) + ' / ' + (w.chars_total || 0) + ' 字</span></span>' +
+        '<span class="resume-go">›</span></button>';
+    });
+    html += '</div><button class="pick-card resume-new">✚ 新开一篇</button>' +
+      '<button class="btn-ghost resume-cancel">取消</button></div>';
+    ov.innerHTML = html;
+    document.body.appendChild(ov);
+    Array.prototype.forEach.call(ov.querySelectorAll('.resume-item'), function (b) {
+      b.addEventListener('click', function () {
+        var wid = parseInt(b.getAttribute('data-wid'), 10);
+        closeResumeChooser();
+        openWork(wid);
+      });
+    });
+    ov.querySelector('.resume-new').addEventListener('click', function () { closeResumeChooser(); openSutra(s.id); });
+    ov.querySelector('.resume-cancel').addEventListener('click', closeResumeChooser);
+    ov.addEventListener('click', function (e) { if (e.target === ov) closeResumeChooser(); });
+  }
+
   function openSutra(id, done) {
     // 新经：手势链内先解锁音频，再拉经文，直达抄写界面
     autoStartMusic();

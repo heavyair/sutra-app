@@ -170,6 +170,12 @@ button:active { transform: scale(0.97); }
 
 /* 选择器（字体 / 笔） */
 .picker-hint { text-align: center; color: var(--ink-dim); font-size: 14px; margin: 8px 16px 16px; }
+/* 未完成抄本选择器 */
+.resume-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.resume-item { justify-content: space-between; }
+.resume-go { font-size: 24px; color: var(--gold); }
+.resume-new { justify-content: center; border-style: dashed; margin-bottom: 8px; }
+.resume-cancel { display: block; margin: 4px auto 0; }
 .pick-cards { display: flex; flex-direction: column; gap: 12px; padding: 0 20px; }
 .pick-card {
   display: flex; align-items: center; gap: 16px;
