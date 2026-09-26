@@ -5,7 +5,7 @@
 <script>
 /* 热更新引导（构建注入）：本地 localStorage 有新版 bundle 则直接载入 */
 (function(){
-  var V = 102;
+  var V = 103;
   window.__BUNDLE_V__ = V;
   function g(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
   function s(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
@@ -951,7 +951,7 @@ button:active { transform: scale(0.97); }
 <!-- 打印专用：屏幕上隐藏，打印时显示 -->
 <div id="print-sheet"></div>
 
-<script src="lib/pdf-lib.min.js?v=102"></script>
+<script src="lib/pdf-lib.min.js?v=103"></script>
 <script>
 /* inlined: music.js */
 /* 抄经应用 · 生成式氛围音乐引擎（Web Audio，无外部资源）
@@ -4128,10 +4128,10 @@ button:active { transform: scale(0.97); }
     var api = {
       view: 'char', cells: [], total: 0, title: '', cardByPos: {},
       pagerIdx: 0, sheetIdx: 0,
-      render: function (cells, total, title) {
+      render: function (cells, total, title, onDone) {
         api.cells = cells || []; api.total = total || 0; api.title = title || '';
         api.pagerIdx = 0; api.sheetIdx = 0;
-        renderActive();
+        renderActive(onDone);
       },
       switch: function (v) { setView(v); },
       goTo: function (i) { if (api._go) api._go(i); },
@@ -4145,9 +4145,28 @@ button:active { transform: scale(0.97); }
       sheetBox.classList.toggle('hidden', v !== 'sheet');
       renderActive();
     }
-    function renderActive() {
-      if (api.view === 'char') renderPager(charBox, api, ctx);
-      else renderSheet(sheetBox, api, ctx);
+    function renderActive(onDone) {
+      // 分块渲染：大作品逐字/整纸生成耗时，用加载进度条反馈；快速切换时旧任务自动作废
+      api._renderSeq = (api._renderSeq || 0) + 1;
+      var seq = api._renderSeq;
+      var n = (api.cells || []).length;
+      var ui = null, cancelled = false;
+      if (n > 40) {
+        ui = showLoading(api.view === 'sheet' ? '正在生成整纸…' : '正在生成逐字…', function () {
+          cancelled = true; api._renderSeq++;
+        });
+        ui.progress(0, 100);
+      }
+      var hooks = {
+        progress: function (f) { if (ui && !cancelled) ui.progress(Math.round(f * 100), 100); },
+        cancelled: function () { return cancelled || seq !== api._renderSeq; },
+        done: function () {
+          if (ui) ui.hide();
+          if (onDone) { try { onDone(!cancelled && seq === api._renderSeq); } catch (e) {} }
+        }
+      };
+      if (api.view === 'char') renderPager(charBox, api, ctx, hooks);
+      else renderSheet(sheetBox, api, ctx, hooks);
     }
     if (bChar) bChar.addEventListener('click', function () { setView('char'); });
     if (bSheet) bSheet.addEventListener('click', function () { setView('sheet'); });
@@ -4162,36 +4181,52 @@ button:active { transform: scale(0.97); }
   }
 
   // 逐字：一列大纸卡，上下滚动浏览，点卡回放落笔（无按钮，翻页靠滚动）；标点跳过不展卡
-  function renderPager(box, api, ctx) {
+  // hooks: {progress(frac), done(), cancelled()} —— 分块生成，大作品不卡界面
+  function renderPager(box, api, ctx, hooks) {
+    hooks = hooks || {};
     box.innerHTML = ''; api.cardByPos = {};
     var cells = (api.cells || []).filter(function (c) {
       return c.ash || (ctx.isBurned && ctx.isBurned(c.pos)) || !isPunct(c.ch);
     });
     if (!cells.length) {
       box.innerHTML = '<div class="work-empty">还没有写完的字，回去继续吧。</div>';
+      if (hooks.done) hooks.done();
       return;
     }
     var list = mkEl('div', 'char-list');
-    cells.forEach(function (c, i) {
-      var row = mkEl('div', 'list-row');
-      var card = mkEl('div', 'work-char list-card');
-      card.appendChild(cellImg(c, ctx, card));
-      if (ctx.onTap) {
-        card.style.cursor = 'pointer';
-        (function (pos) { card.addEventListener('click', function () { ctx.onTap(pos); }); })(c.pos);
-      }
-      var cap = mkEl('div', 'list-cap');
-      cap.textContent = '第 ' + (i + 1) + ' / ' + cells.length + ' 字 · ' + c.ch;
-      row.appendChild(card); row.appendChild(cap);
-      list.appendChild(row);
-      api.cardByPos[c.pos] = card;
-    });
     box.appendChild(list);
-    // 仪式燃烧跟随：把正在烧的字滚进视野
-    api._go = function (i) {
-      var row = list.children[Math.max(0, Math.min(cells.length - 1, i))];
-      if (row && row.scrollIntoView) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    };
+    var i = 0, CHUNK = 12;
+    (function step() {
+      if (hooks.cancelled && hooks.cancelled()) return;
+      var end = Math.min(cells.length, i + CHUNK);
+      for (; i < end; i++) {
+        (function (c, idx) {
+          var row = mkEl('div', 'list-row');
+          var card = mkEl('div', 'work-char list-card');
+          card.appendChild(cellImg(c, ctx, card));
+          if (ctx.onTap) {
+            card.style.cursor = 'pointer';
+            card.addEventListener('click', function () { ctx.onTap(c.pos); });
+          }
+          var cap = mkEl('div', 'list-cap');
+          cap.textContent = '第 ' + (idx + 1) + ' / ' + cells.length + ' 字 · ' + c.ch;
+          row.appendChild(card); row.appendChild(cap);
+          list.appendChild(row);
+          api.cardByPos[c.pos] = card;
+        })(cells[i], i);
+      }
+      if (hooks.progress) { try { hooks.progress(i / cells.length); } catch (e) {} }
+      if (i < cells.length) {
+        setTimeout(step, 0);
+      } else {
+        // 仪式燃烧跟随：把正在烧的字滚进视野
+        api._go = function (n) {
+          var row = list.children[Math.max(0, Math.min(cells.length - 1, n))];
+          if (row && row.scrollIntoView) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        };
+        if (hooks.done) hooks.done();
+      }
+    })();
   }
 
   // 单行自适应：宽度不够则逐级缩小字号（字距同比），直到放下为止
@@ -4209,12 +4244,14 @@ button:active { transform: scale(0.97); }
   }
 
   // 整纸：复刻 PDF 版式（等比缩小）：标题《经名》＋日期＋字格；
-  // 字图与 PDF 同取景（renderCropped 紧裁剪，大字满格）
-  function renderSheet(box, api, ctx) {
+  // 字图与 PDF 同取景（renderCropped 紧裁剪，大字满格）；分块生成，hooks 同 renderPager
+  function renderSheet(box, api, ctx, hooks) {
+    hooks = hooks || {};
     box.innerHTML = ''; api.cardByPos = {};
     var cells = api.cells || [];
     if (!cells.length) {
       box.innerHTML = '<div class="work-empty">还没有写完的字，回去继续吧。</div>';
+      if (hooks.done) hooks.done();
       return;
     }
     var sheet = mkEl('div', 'paper-sheet');
@@ -4229,32 +4266,45 @@ button:active { transform: scale(0.97); }
       now.getFullYear() + '-' + (now.getMonth() + 1) + '-' + now.getDate();
     sheet.appendChild(metaEl);
     var grid = mkEl('div', 'sheet-grid');
-    var fontStack = (state.font && state.font.stack) || '';
-    var lay = sheetLayout(cells, fontStack, ctx.isBurned);
-    lay.items.forEach(function (it) {
-      var d = mkEl('div', 'sheet-cell');
-      if (it.ash) {
-        d.appendChild(ashImg());
-        d.classList.add('burned');
-      } else {
-        d.appendChild(sheetCellImg(it, lay.side));
-        if (ctx.onTap) {
-          d.style.cursor = 'pointer';
-          (function (pos) { d.addEventListener('click', function () { ctx.onTap(pos); }); })(it.pos);
-        }
-      }
-      api.cardByPos[it.pos] = d;
-      grid.appendChild(d);
-    });
     sheet.appendChild(grid);
     box.appendChild(sheet);
-    fitSheetText(titleEl, 17, 12);
-    fitSheetText(metaEl, 11, 8);
-    // 兼容旧调用：单张纸，直接滚到顶部
-    api._drawPage = function () {
-      if (sheet && sheet.scrollIntoView) sheet.scrollIntoView({ block: 'start', behavior: 'smooth' });
-      api.sheetIdx = 0;
-    };
+    var lay = sheetLayout(cells, fontStack, ctx.isBurned);
+    var items = lay.items;
+    var i = 0, CHUNK = 16;
+    (function step() {
+      if (hooks.cancelled && hooks.cancelled()) return;
+      var end = Math.min(items.length, i + CHUNK);
+      for (; i < end; i++) {
+        (function (it) {
+          var d = mkEl('div', 'sheet-cell');
+          if (it.ash) {
+            d.appendChild(ashImg());
+            d.classList.add('burned');
+          } else {
+            d.appendChild(sheetCellImg(it, lay.side));
+            if (ctx.onTap) {
+              d.style.cursor = 'pointer';
+              d.addEventListener('click', function () { ctx.onTap(it.pos); });
+            }
+          }
+          api.cardByPos[it.pos] = d;
+          grid.appendChild(d);
+        })(items[i]);
+      }
+      if (hooks.progress) { try { hooks.progress(i / items.length); } catch (e) {} }
+      if (i < items.length) {
+        setTimeout(step, 0);
+      } else {
+        fitSheetText(titleEl, 17, 12);
+        fitSheetText(metaEl, 11, 8);
+        // 兼容旧调用：单张纸，直接滚到顶部
+        api._drawPage = function () {
+          if (sheet && sheet.scrollIntoView) sheet.scrollIntoView({ block: 'start', behavior: 'smooth' });
+          api.sheetIdx = 0;
+        };
+        if (hooks.done) hooks.done();
+      }
+    })();
   }
 
   /* ---------- 10. 欣赏（已并入作品查看器：会话内用本地字迹表 + 会话快照，不拉服务端字） ---------- */
@@ -5345,8 +5395,9 @@ button:active { transform: scale(0.97); }
       if (cells[i].pos === charPos) { cells[i].saved = entry; idx = i; break; }
     }
     if (_sheetCropCache.map) delete _sheetCropCache.map[charPos]; // 整纸该格缓存失效
-    dual.render(cells, dual.total, dual.title);
-    if (idx >= 0 && dual.view === 'char') dual.goTo(idx); // 逐字：滚回刚改的字
+    dual.render(cells, dual.total, dual.title, function (ok) {
+      if (ok && idx >= 0 && dual.view === 'char') dual.goTo(idx); // 逐字：滚回刚改的字
+    });
   }
 
   function saveCharRewrite() {
