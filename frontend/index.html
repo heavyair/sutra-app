@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1a1611">
 <title>抄经 · 静心</title>
-<link rel="stylesheet" href="styles.css?v=93">
+<link rel="stylesheet" href="styles.css?v=94">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@600&display=swap">
 </head>
@@ -164,30 +164,22 @@
     <div id="char-toast" class="char-toast hidden"></div>
   </section>
 
-<!-- 落笔放映：全屏，整部作品按原节奏依次重演，如有人在眼前落笔 -->
-<div id="inkplay-overlay" class="play-overlay hidden">
+<!-- 放映：全屏；默认落笔放映（整部作品按原节奏依次重演），工具菜单可切整纸放映 -->
+<div id="play-overlay" class="play-overlay hidden">
   <div class="inkplay-stage" id="inkplay-stage">
     <canvas id="inkplay-paper"></canvas>
     <canvas id="inkplay-ink"></canvas>
   </div>
-  <div class="play-top"><span id="inkplay-label"></span></div>
-  <button id="btn-inkplay-tools" class="fab play-tools" aria-label="工具">☰</button>
-  <div id="inkplay-menu" class="play-menu hidden">
-    <button class="play-close" id="btn-inkplay-close">关闭</button>
-  </div>
-</div>
-
-<!-- 整纸放映：全屏，一页纸上按顺序逐字重演笔画 -->
-<div id="sheetplay-overlay" class="play-overlay hidden">
-  <div class="sheetplay-scroll" id="sheetplay-scroll">
+  <div class="sheetplay-scroll hidden" id="sheetplay-scroll">
     <div class="paper-sheet sheetplay-sheet">
       <div class="sheet-grid" id="sheetplay-grid"></div>
     </div>
   </div>
-  <div class="play-top"><span id="sheetplay-label"></span></div>
-  <button id="btn-sheetplay-tools" class="fab play-tools" aria-label="工具">☰</button>
-  <div id="sheetplay-menu" class="play-menu hidden">
-    <button class="play-close" id="btn-sheetplay-close">关闭</button>
+  <div class="play-top"><span id="play-label"></span></div>
+  <button id="btn-play-tools" class="fab play-tools" aria-label="工具">☰</button>
+  <div id="play-menu" class="play-menu hidden">
+    <button class="play-mode" id="btn-play-mode">整纸放映</button>
+    <button class="play-close" id="btn-play-close">关闭</button>
   </div>
 </div>
 
@@ -264,9 +256,9 @@
 <!-- 打印专用：屏幕上隐藏，打印时显示 -->
 <div id="print-sheet"></div>
 
-<script src="lib/pdf-lib.min.js?v=93"></script>
-<script src="music.js?v=93"></script>
-<script src="writing.js?v=93"></script>
-<script src="app.js?v=93"></script>
+<script src="lib/pdf-lib.min.js?v=94"></script>
+<script src="music.js?v=94"></script>
+<script src="writing.js?v=94"></script>
+<script src="app.js?v=94"></script>
 </body>
 </html>

@@ -2118,8 +2118,7 @@
     var canDedicate = w.can_dedicate && !dedicated && w.chars_done > 0;    var items = [];
     if (!dedicated && !finished) items.push({ label: '续写', onClick: continueWork });
     if (!dedicated && w.chars_done > 0) {
-      items.push({ label: '放映', onClick: openInkPlay });
-      items.push({ label: '整纸放映', onClick: openSheetPlay });
+      items.push({ label: '放映', onClick: openPlay });
       items.push({ label: 'PDF', onClick: printWork });
       if (w.has_audio) {
         // 放映配乐来源：播原录音（默认）/ 按放映速度重新生成，记住选择
@@ -2983,14 +2982,47 @@
     };
   }
 
-  function openInkPlay() {
+  /* ---------- 放映：落笔放映 / 整纸放映同一界面，默认落笔放映，工具菜单切换 ---------- */
+  var playMode = 'ink'; // 'ink' 落笔放映 | 'sheet' 整纸放映
+
+  function openPlay() {
+    var byPos = state.workCharsByPos || {};
+    var full = state.fullChars || state.chars || [];
+    var has = false;
+    for (var i = 0; i < full.length; i++) if (byPos[i]) { has = true; break; }
+    if (!has) { alert('还没有写完的字'); return; }
+    $('play-overlay').classList.remove('hidden');
+    setPlayMode('ink'); // 默认落笔放映
+  }
+
+  function stopPlayMedia() {
+    inkplayActive = false;
+    sheetplayActive = false;
+    if (inkplayCancel) { inkplayCancel(); inkplayCancel = null; }
+    if (sheetplayCancel) { try { sheetplayCancel(); } catch (e) {} sheetplayCancel = null; }
+    if (inkplayStopAudio) { try { inkplayStopAudio(); } catch (e2) {} inkplayStopAudio = null; }
+    if (sheetplayStopAudio) { try { sheetplayStopAudio(); } catch (e3) {} sheetplayStopAudio = null; }
+  }
+
+  function setPlayMode(mode) {
+    stopPlayMedia();
+    playMode = mode;
+    var isSheet = mode === 'sheet';
+    $('inkplay-stage').classList.toggle('hidden', isSheet);
+    $('sheetplay-scroll').classList.toggle('hidden', !isSheet);
+    $('btn-play-mode').textContent = isSheet ? '落笔放映' : '整纸放映';
+    var m = $('play-menu');
+    m.classList.remove('open'); m.classList.add('hidden');
+    if (isSheet) startSheetPlay(); else startInkPlay();
+  }
+
+  function startInkPlay() {
     var byPos = state.workCharsByPos || {};
     var full = state.fullChars || state.chars || [];
     var queue = [];
     for (var i = 0; i < full.length; i++) if (byPos[i]) queue.push(i);
     if (!queue.length) { alert('还没有写完的字'); return; }
-    // 全屏：舞台铺满 overlay，笔迹按书写时的宽高比居中适配（replayStrokes 内 _fitRect 处理）
-    $('inkplay-overlay').classList.remove('hidden');
+    // 舞台铺满 overlay，笔迹按书写时的宽高比居中适配（replayStrokes 内 _fitRect 处理）
     if (!inkplayPad) inkplayPad = new WritingPad($('inkplay-paper'), $('inkplay-ink'), {});
     else inkplayPad._resize();
     inkplayPad.setFont(state.font.stack);
@@ -3001,28 +3033,29 @@
     var step = function () {
       if (!inkplayActive) return;
       if (idx >= queue.length) {
-        $('inkplay-label').textContent = '放映结束 · 共 ' + queue.length + ' 字';
+        $('play-label').textContent = '放映结束 · 共 ' + queue.length + ' 字';
         inkplayActive = false;
         return;
       }
       var pos = queue[idx++];
       var ch = full[pos];
       var saved = byPos[pos];
-      $('inkplay-label').textContent = '第 ' + (pos + 1) + ' 字 · ' + ch + '（' + idx + '/' + queue.length + '）';
+      $('play-label').textContent = '第 ' + (pos + 1) + ' 字 · ' + ch + '（' + idx + '/' + queue.length + '）';
       inkplayCancel = playOneChar(inkplayPad, ch, saved, step);
     };
     step();
   }
 
-  function closeInkPlay() {
-    inkplayActive = false;
-    if (inkplayCancel) { inkplayCancel(); inkplayCancel = null; }
-    if (inkplayStopAudio) { try { inkplayStopAudio(); } catch (e) {} inkplayStopAudio = null; }
-    var m = $('inkplay-menu');
+  function closePlay() {
+    stopPlayMedia();
+    var m = $('play-menu');
     m.classList.remove('open'); m.classList.add('hidden');
-    $('inkplay-overlay').classList.add('hidden');
+    $('play-overlay').classList.add('hidden');
   }
-  $('btn-inkplay-close').addEventListener('click', closeInkPlay);
+  $('btn-play-close').addEventListener('click', closePlay);
+  $('btn-play-mode').addEventListener('click', function () {
+    setPlayMode(playMode === 'ink' ? 'sheet' : 'ink');
+  });
 
   /* ---------- 整纸放映：一页纸上按顺序逐字重演笔画 ---------- */
   var sheetplayActive = false, sheetplayCancel = null, sheetplayStopAudio = null;
@@ -3127,7 +3160,7 @@
     };
   }
 
-  function openSheetPlay() {
+  function startSheetPlay() {
     var full = state.fullChars || state.chars || [];
     var byPos = state.workCharsByPos || {};
     var fontStack = (state.font && state.font.stack) || '';
@@ -3152,14 +3185,13 @@
       return { el: d, cv: cv };
     });
     $('sheetplay-scroll').scrollTop = 0;
-    $('sheetplay-overlay').classList.remove('hidden');
     sheetplayActive = true;
     sheetplayStopAudio = playWorkAudio({ tempo: replayTempoFor(items, 1200) });
     var idx = 0;
     var step = function () {
       if (!sheetplayActive) return;
       if (idx >= items.length) {
-        $('sheetplay-label').textContent = '放映结束 · 共 ' + items.length + ' 字';
+        $('play-label').textContent = '放映结束 · 共 ' + items.length + ' 字';
         sheetplayActive = false;
         return;
       }
@@ -3167,7 +3199,7 @@
       var it = items[k], ce = cellEls[k];
       ce.el.classList.add('playing');
       try { ce.el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
-      $('sheetplay-label').textContent = '第 ' + (k + 1) + ' 字 · ' + it.ch + '（' + (k + 1) + '/' + items.length + '）';
+      $('play-label').textContent = '第 ' + (k + 1) + ' 字 · ' + it.ch + '（' + (k + 1) + '/' + items.length + '）';
       sheetplayCancel = playSheetChar(ce.cv, it, fontStack, lay.side, function () {
         ce.el.classList.remove('playing');
         step();
@@ -3176,15 +3208,6 @@
     step();
   }
 
-  function closeSheetPlay() {
-    sheetplayActive = false;
-    if (sheetplayCancel) { try { sheetplayCancel(); } catch (e) {} sheetplayCancel = null; }
-    if (sheetplayStopAudio) { try { sheetplayStopAudio(); } catch (e2) {} sheetplayStopAudio = null; }
-    var m = $('sheetplay-menu');
-    m.classList.remove('open'); m.classList.add('hidden');
-    $('sheetplay-overlay').classList.add('hidden');
-  }
-  $('btn-sheetplay-close').addEventListener('click', closeSheetPlay);
 
   /* 放映内工具按钮：☰ 弹出关闭（与书写屏工具菜单同手感） */
   function bindPlayTools(btnId, menuId) {
@@ -3200,8 +3223,7 @@
       }
     });
   }
-  bindPlayTools('btn-inkplay-tools', 'inkplay-menu');
-  bindPlayTools('btn-sheetplay-tools', 'sheetplay-menu');
+  bindPlayTools('btn-play-tools', 'play-menu');
 
   /* ---------- 分享链接直达：#w=123&share=xxx ---------- */
   (function () {

@@ -5,7 +5,7 @@
 <script>
 /* 热更新引导（构建注入）：本地 localStorage 有新版 bundle 则直接载入 */
 (function(){
-  var V = 93;
+  var V = 94;
   window.__BUNDLE_V__ = V;
   function g(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
   function s(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
@@ -460,12 +460,11 @@ button:active { transform: scale(0.97); }
   font-size: 13px; color: var(--ink-dim);
   background: rgba(26, 22, 17, 0.6); padding: 6px 14px; border-radius: 999px;
 }
-/* 逐字放映：纸铺满全屏（笔迹按原宽高比居中适配，不变形） */
-#inkplay-overlay .inkplay-stage { position: absolute; inset: 0; background: var(--paper); overflow: hidden; }
-#inkplay-overlay .inkplay-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-/* 整纸放映：纸在全屏中滚动 */
-#sheetplay-overlay .sheetplay-scroll { position: absolute; inset: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-#sheetplay-overlay .sheetplay-sheet {
+/* 放映：纸铺满全屏（笔迹按原宽高比居中适配，不变形）/ 纸在全屏中滚动 */
+#play-overlay .inkplay-stage { position: absolute; inset: 0; background: var(--paper); overflow: hidden; }
+#play-overlay .inkplay-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+#play-overlay .sheetplay-scroll { position: absolute; inset: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+#play-overlay .sheetplay-sheet {
   margin-left: auto; margin-right: auto;
   margin-top: calc(52px + env(safe-area-inset-top));
   margin-bottom: calc(110px + env(safe-area-inset-bottom));
@@ -491,6 +490,18 @@ button:active { transform: scale(0.97); }
   transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 0.25s;
 }
 .play-menu.open .play-close { opacity: 1; transform: translate(12px, -190px) scale(1); }
+/* 放映模式切换按钮：与关闭同样式，位置在关闭下方 */
+.play-mode {
+  position: absolute; pointer-events: auto;
+  left: calc(18px + env(safe-area-inset-left));
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  width: 64px; height: 64px; border-radius: 50%; padding: 0;
+  background: rgba(26, 22, 17, 0.92); border: 1px solid var(--gold);
+  color: var(--ink); font-size: 13px; letter-spacing: 1px;
+  opacity: 0; transform: translate(0, 0) scale(0.4);
+  transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 0.25s;
+}
+.play-menu.open .play-mode { opacity: 1; transform: translate(12px, -108px) scale(1); }
 
 /* 回向 */
 .dedication-block { margin: 10px 16px 0; padding: 12px 14px; border-radius: 10px;
@@ -799,30 +810,22 @@ button:active { transform: scale(0.97); }
     <div id="char-toast" class="char-toast hidden"></div>
   </section>
 
-<!-- 落笔放映：全屏，整部作品按原节奏依次重演，如有人在眼前落笔 -->
-<div id="inkplay-overlay" class="play-overlay hidden">
+<!-- 放映：全屏；默认落笔放映（整部作品按原节奏依次重演），工具菜单可切整纸放映 -->
+<div id="play-overlay" class="play-overlay hidden">
   <div class="inkplay-stage" id="inkplay-stage">
     <canvas id="inkplay-paper"></canvas>
     <canvas id="inkplay-ink"></canvas>
   </div>
-  <div class="play-top"><span id="inkplay-label"></span></div>
-  <button id="btn-inkplay-tools" class="fab play-tools" aria-label="工具">☰</button>
-  <div id="inkplay-menu" class="play-menu hidden">
-    <button class="play-close" id="btn-inkplay-close">关闭</button>
-  </div>
-</div>
-
-<!-- 整纸放映：全屏，一页纸上按顺序逐字重演笔画 -->
-<div id="sheetplay-overlay" class="play-overlay hidden">
-  <div class="sheetplay-scroll" id="sheetplay-scroll">
+  <div class="sheetplay-scroll hidden" id="sheetplay-scroll">
     <div class="paper-sheet sheetplay-sheet">
       <div class="sheet-grid" id="sheetplay-grid"></div>
     </div>
   </div>
-  <div class="play-top"><span id="sheetplay-label"></span></div>
-  <button id="btn-sheetplay-tools" class="fab play-tools" aria-label="工具">☰</button>
-  <div id="sheetplay-menu" class="play-menu hidden">
-    <button class="play-close" id="btn-sheetplay-close">关闭</button>
+  <div class="play-top"><span id="play-label"></span></div>
+  <button id="btn-play-tools" class="fab play-tools" aria-label="工具">☰</button>
+  <div id="play-menu" class="play-menu hidden">
+    <button class="play-mode" id="btn-play-mode">整纸放映</button>
+    <button class="play-close" id="btn-play-close">关闭</button>
   </div>
 </div>
 
@@ -899,7 +902,7 @@ button:active { transform: scale(0.97); }
 <!-- 打印专用：屏幕上隐藏，打印时显示 -->
 <div id="print-sheet"></div>
 
-<script src="lib/pdf-lib.min.js?v=93"></script>
+<script src="lib/pdf-lib.min.js?v=94"></script>
 <script>
 /* inlined: music.js */
 /* 抄经应用 · 生成式氛围音乐引擎（Web Audio，无外部资源）
@@ -4350,8 +4353,7 @@ button:active { transform: scale(0.97); }
     var canDedicate = w.can_dedicate && !dedicated && w.chars_done > 0;    var items = [];
     if (!dedicated && !finished) items.push({ label: '续写', onClick: continueWork });
     if (!dedicated && w.chars_done > 0) {
-      items.push({ label: '放映', onClick: openInkPlay });
-      items.push({ label: '整纸放映', onClick: openSheetPlay });
+      items.push({ label: '放映', onClick: openPlay });
       items.push({ label: 'PDF', onClick: printWork });
       if (w.has_audio) {
         // 放映配乐来源：播原录音（默认）/ 按放映速度重新生成，记住选择
@@ -5215,14 +5217,47 @@ button:active { transform: scale(0.97); }
     };
   }
 
-  function openInkPlay() {
+  /* ---------- 放映：落笔放映 / 整纸放映同一界面，默认落笔放映，工具菜单切换 ---------- */
+  var playMode = 'ink'; // 'ink' 落笔放映 | 'sheet' 整纸放映
+
+  function openPlay() {
+    var byPos = state.workCharsByPos || {};
+    var full = state.fullChars || state.chars || [];
+    var has = false;
+    for (var i = 0; i < full.length; i++) if (byPos[i]) { has = true; break; }
+    if (!has) { alert('还没有写完的字'); return; }
+    $('play-overlay').classList.remove('hidden');
+    setPlayMode('ink'); // 默认落笔放映
+  }
+
+  function stopPlayMedia() {
+    inkplayActive = false;
+    sheetplayActive = false;
+    if (inkplayCancel) { inkplayCancel(); inkplayCancel = null; }
+    if (sheetplayCancel) { try { sheetplayCancel(); } catch (e) {} sheetplayCancel = null; }
+    if (inkplayStopAudio) { try { inkplayStopAudio(); } catch (e2) {} inkplayStopAudio = null; }
+    if (sheetplayStopAudio) { try { sheetplayStopAudio(); } catch (e3) {} sheetplayStopAudio = null; }
+  }
+
+  function setPlayMode(mode) {
+    stopPlayMedia();
+    playMode = mode;
+    var isSheet = mode === 'sheet';
+    $('inkplay-stage').classList.toggle('hidden', isSheet);
+    $('sheetplay-scroll').classList.toggle('hidden', !isSheet);
+    $('btn-play-mode').textContent = isSheet ? '落笔放映' : '整纸放映';
+    var m = $('play-menu');
+    m.classList.remove('open'); m.classList.add('hidden');
+    if (isSheet) startSheetPlay(); else startInkPlay();
+  }
+
+  function startInkPlay() {
     var byPos = state.workCharsByPos || {};
     var full = state.fullChars || state.chars || [];
     var queue = [];
     for (var i = 0; i < full.length; i++) if (byPos[i]) queue.push(i);
     if (!queue.length) { alert('还没有写完的字'); return; }
-    // 全屏：舞台铺满 overlay，笔迹按书写时的宽高比居中适配（replayStrokes 内 _fitRect 处理）
-    $('inkplay-overlay').classList.remove('hidden');
+    // 舞台铺满 overlay，笔迹按书写时的宽高比居中适配（replayStrokes 内 _fitRect 处理）
     if (!inkplayPad) inkplayPad = new WritingPad($('inkplay-paper'), $('inkplay-ink'), {});
     else inkplayPad._resize();
     inkplayPad.setFont(state.font.stack);
@@ -5233,28 +5268,29 @@ button:active { transform: scale(0.97); }
     var step = function () {
       if (!inkplayActive) return;
       if (idx >= queue.length) {
-        $('inkplay-label').textContent = '放映结束 · 共 ' + queue.length + ' 字';
+        $('play-label').textContent = '放映结束 · 共 ' + queue.length + ' 字';
         inkplayActive = false;
         return;
       }
       var pos = queue[idx++];
       var ch = full[pos];
       var saved = byPos[pos];
-      $('inkplay-label').textContent = '第 ' + (pos + 1) + ' 字 · ' + ch + '（' + idx + '/' + queue.length + '）';
+      $('play-label').textContent = '第 ' + (pos + 1) + ' 字 · ' + ch + '（' + idx + '/' + queue.length + '）';
       inkplayCancel = playOneChar(inkplayPad, ch, saved, step);
     };
     step();
   }
 
-  function closeInkPlay() {
-    inkplayActive = false;
-    if (inkplayCancel) { inkplayCancel(); inkplayCancel = null; }
-    if (inkplayStopAudio) { try { inkplayStopAudio(); } catch (e) {} inkplayStopAudio = null; }
-    var m = $('inkplay-menu');
+  function closePlay() {
+    stopPlayMedia();
+    var m = $('play-menu');
     m.classList.remove('open'); m.classList.add('hidden');
-    $('inkplay-overlay').classList.add('hidden');
+    $('play-overlay').classList.add('hidden');
   }
-  $('btn-inkplay-close').addEventListener('click', closeInkPlay);
+  $('btn-play-close').addEventListener('click', closePlay);
+  $('btn-play-mode').addEventListener('click', function () {
+    setPlayMode(playMode === 'ink' ? 'sheet' : 'ink');
+  });
 
   /* ---------- 整纸放映：一页纸上按顺序逐字重演笔画 ---------- */
   var sheetplayActive = false, sheetplayCancel = null, sheetplayStopAudio = null;
@@ -5359,7 +5395,7 @@ button:active { transform: scale(0.97); }
     };
   }
 
-  function openSheetPlay() {
+  function startSheetPlay() {
     var full = state.fullChars || state.chars || [];
     var byPos = state.workCharsByPos || {};
     var fontStack = (state.font && state.font.stack) || '';
@@ -5384,14 +5420,13 @@ button:active { transform: scale(0.97); }
       return { el: d, cv: cv };
     });
     $('sheetplay-scroll').scrollTop = 0;
-    $('sheetplay-overlay').classList.remove('hidden');
     sheetplayActive = true;
     sheetplayStopAudio = playWorkAudio({ tempo: replayTempoFor(items, 1200) });
     var idx = 0;
     var step = function () {
       if (!sheetplayActive) return;
       if (idx >= items.length) {
-        $('sheetplay-label').textContent = '放映结束 · 共 ' + items.length + ' 字';
+        $('play-label').textContent = '放映结束 · 共 ' + items.length + ' 字';
         sheetplayActive = false;
         return;
       }
@@ -5399,7 +5434,7 @@ button:active { transform: scale(0.97); }
       var it = items[k], ce = cellEls[k];
       ce.el.classList.add('playing');
       try { ce.el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
-      $('sheetplay-label').textContent = '第 ' + (k + 1) + ' 字 · ' + it.ch + '（' + (k + 1) + '/' + items.length + '）';
+      $('play-label').textContent = '第 ' + (k + 1) + ' 字 · ' + it.ch + '（' + (k + 1) + '/' + items.length + '）';
       sheetplayCancel = playSheetChar(ce.cv, it, fontStack, lay.side, function () {
         ce.el.classList.remove('playing');
         step();
@@ -5408,15 +5443,6 @@ button:active { transform: scale(0.97); }
     step();
   }
 
-  function closeSheetPlay() {
-    sheetplayActive = false;
-    if (sheetplayCancel) { try { sheetplayCancel(); } catch (e) {} sheetplayCancel = null; }
-    if (sheetplayStopAudio) { try { sheetplayStopAudio(); } catch (e2) {} sheetplayStopAudio = null; }
-    var m = $('sheetplay-menu');
-    m.classList.remove('open'); m.classList.add('hidden');
-    $('sheetplay-overlay').classList.add('hidden');
-  }
-  $('btn-sheetplay-close').addEventListener('click', closeSheetPlay);
 
   /* 放映内工具按钮：☰ 弹出关闭（与书写屏工具菜单同手感） */
   function bindPlayTools(btnId, menuId) {
@@ -5432,8 +5458,7 @@ button:active { transform: scale(0.97); }
       }
     });
   }
-  bindPlayTools('btn-inkplay-tools', 'inkplay-menu');
-  bindPlayTools('btn-sheetplay-tools', 'sheetplay-menu');
+  bindPlayTools('btn-play-tools', 'play-menu');
 
   /* ---------- 分享链接直达：#w=123&share=xxx ---------- */
   (function () {
