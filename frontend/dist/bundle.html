@@ -1,3 +1,2049 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<script>
+/* 热更新引导（构建注入）：本地 localStorage 有新版 bundle 则直接载入 */
+(function(){
+  var V = 73;
+  window.__BUNDLE_V__ = V;
+  function g(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+  function s(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
+  try {
+    var sv = g('sutra_bundle_v');
+    if (sv && parseInt(sv,10) > V && sv !== g('sutra_bundle_bad')) {
+      var tk = 'sutra_bundle_try_' + sv;
+      var n = (parseInt(g(tk)||'0',10)||0) + 1;
+      if (n > 3) { s('sutra_bundle_bad', sv); }
+      else {
+        s(tk, String(n));
+        var html = g('sutra_bundle_html');
+        if (html && html.indexOf('__BUNDLE_V__') >= 0) {
+          document.open(); document.write(html); document.close();
+          return;
+        }
+      }
+    }
+  } catch(e){}
+})();
+</script>
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1a1611">
+<title>抄经 · 静心</title>
+<style>
+/* inlined: styles.css */
+/* 抄经应用 · 移动端优先样式（无构建、纯 CSS） */
+:root {
+  --bg: #1a1611;
+  --bg-soft: #241e16;
+  --ink: #e8ddc8;
+  --ink-dim: #a99c80;
+  --gold: #c9a24b;
+  --gold-deep: #8f6f2a;
+  --card: #2b241a;
+  --line: #3a3122;
+  --red: #c0564d;
+  --paper: #f4eddc;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg); color: var(--ink);
+  font-family: "Songti SC", "STSong", "Noto Serif SC", serif;
+  overscroll-behavior: none;
+}
+
+#app { max-width: 560px; margin: 0 auto; min-height: 100dvh; }
+
+.screen { display: none; min-height: 100dvh; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+.screen.active { display: block; }
+/* 顶栏已移除：各屏顶部留出安全距离 */
+#screen-library, #screen-work { padding-top: calc(10px + env(safe-area-inset-top)); }
+
+/* 顶栏 */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; background: var(--bg); z-index: 10;
+}
+.topbar h2 { margin: 0; font-size: 20px; letter-spacing: 4px; font-weight: 600; }
+.topbar-spacer { width: 48px; }
+.topbar .ghost-btn {
+  min-height: 36px; padding: 6px 16px; font-size: 14px;
+  border-radius: 999px; background: transparent;
+}
+
+/* 按钮：触摸友好，最小 48px */
+button {
+  font-family: inherit; font-size: 16px; min-height: 48px;
+  border-radius: 12px; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink); padding: 12px 18px;
+  cursor: pointer;
+}
+button:active { transform: scale(0.97); }
+.btn-primary { background: var(--gold); border-color: var(--gold); color: #1a1611; font-weight: 700; }
+.btn-secondary { background: var(--card); }
+.btn-ghost { background: transparent; border: none; font-size: 20px; min-width: 48px; }
+.btn-big { width: 100%; font-size: 18px; }
+
+/* 推荐码页 */
+#screen-invite { display: none; align-items: center; justify-content: center; padding: 24px; }
+#screen-invite.active { display: flex; }
+.invite-card { text-align: center; width: 100%; max-width: 340px; }
+.invite-seal { font-size: 56px; }
+.invite-card h1 { font-size: 44px; letter-spacing: 12px; margin: 16px 0 8px; }
+.subtitle { color: var(--ink-dim); letter-spacing: 6px; margin-bottom: 32px; }
+#invite-code {
+  width: 100%; min-height: 52px; font-size: 18px; text-align: center;
+  background: var(--bg-soft); border: 1px solid var(--line); border-radius: 12px;
+  color: var(--ink); margin-bottom: 16px; letter-spacing: 2px;
+}
+#btn-verify { width: 100%; }
+.msg { min-height: 24px; color: var(--red); font-size: 14px; }
+
+/* 注册 / 登录 */
+#screen-auth { display: none; align-items: center; justify-content: center; padding: 24px; }
+#screen-auth.active { display: flex; }
+.invite-sub { color: var(--ink-dim); font-size: 14px; margin: 0 0 16px; }
+.invite-input {
+  width: 100%; min-height: 52px; font-size: 17px; text-align: center;
+  background: var(--bg-soft); border: 1px solid var(--line); border-radius: 12px;
+  color: var(--ink); margin-bottom: 12px; letter-spacing: 1px; box-sizing: border-box;
+}
+.code-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.code-row .invite-input { flex: 1; min-width: 0; margin-bottom: 0; }
+#btn-auth-send-code {
+  white-space: nowrap; font-size: 15px; padding: 0 16px; min-height: 52px;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: var(--bg-soft); color: var(--ink);
+}
+#btn-auth-send-code:disabled { opacity: 0.5; }
+#btn-auth-submit { width: 100%; }
+
+/* 经文库 */
+.filter-row { display: flex; gap: 10px; padding: 14px 16px; }
+.chip {
+  flex: 1; min-height: 44px; border-radius: 999px;
+  background: var(--bg-soft); border: 1px solid var(--line); font-size: 15px;
+}
+.chip.active { background: var(--gold); border-color: var(--gold); color: #1a1611; font-weight: 700; }
+.sutra-list { list-style: none; margin: 0; padding: 0 16px; display: flex; flex-direction: column; gap: 12px; }
+.sutra-list li {
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  padding: 16px; min-height: 64px;
+}
+.sutra-list li:active { border-color: var(--gold); }
+.sutra-title { font-size: 18px; margin-bottom: 6px; }
+.sutra-meta { font-size: 13px; color: var(--ink-dim); }
+.sutra-intro { font-size: 14px; color: var(--ink-dim); margin-top: 8px; line-height: 1.6; }
+.badge-todo { color: var(--gold); font-size: 13px; border: 1px solid var(--gold-deep); border-radius: 8px; padding: 2px 8px; margin-left: 8px; }
+
+/* 选择器（字体 / 笔） */
+.picker-hint { text-align: center; color: var(--ink-dim); font-size: 14px; margin: 8px 16px 16px; }
+.pick-cards { display: flex; flex-direction: column; gap: 12px; padding: 0 20px; }
+.pick-card {
+  display: flex; align-items: center; gap: 16px;
+  background: var(--card); border: 2px solid var(--line); border-radius: 16px;
+  padding: 14px 18px; text-align: left; width: 100%;
+}
+.pick-card.selected { border-color: var(--gold); background: #33291a; }
+.pick-card .preview {
+  width: 64px; height: 64px; line-height: 64px; text-align: center;
+  font-size: 44px; color: var(--ink); background: var(--paper);
+  border-radius: 12px; flex-shrink: 0;
+}
+.pick-card .pick-name { font-size: 19px; letter-spacing: 3px; }
+.pick-card .pick-desc { font-size: 13px; color: var(--ink-dim); margin-top: 4px; }
+/* 背景音：场景/调制选项 chips */
+.chip-row {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  padding: 0 20px; margin-bottom: 18px;
+}
+.chip-row .chip {
+  border: 1px solid var(--line); border-radius: 999px;
+  background: transparent; color: var(--ink);
+  font-size: 15px; padding: 8px 16px; cursor: pointer;
+}
+.chip-row .chip.selected {
+  border-color: var(--gold); color: var(--gold);
+  background: #33291a;
+}
+/* 背景音：音量滑杆 */
+.vol-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 20px; margin-bottom: 18px;
+}
+.vol-row span { font-size: 14px; color: var(--ink-dim); white-space: nowrap; }
+.vol-row input[type="range"] { flex: 1; accent-color: var(--gold); }
+.picker-foot { padding: 20px; }
+.picker-foot .btn-secondary { width: 100%; margin-top: 10px; }
+
+/* 全屏抄写 */
+#screen-write {
+  position: fixed; inset: 0; z-index: 50;
+  padding: 0; min-height: 100dvh; background: var(--paper);
+}
+#screen-write.active { display: block; }
+#paper-canvas, #ink-canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  touch-action: none;
+}
+#paper-canvas { z-index: 1; }
+#ink-canvas { z-index: 2; }
+
+/* 开场：经名 / 段落慢读 */
+#intro-overlay {
+  position: absolute; inset: 0; z-index: 5;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 32px; pointer-events: none;
+  transition: opacity 0.6s ease;
+}
+#intro-overlay.hidden { display: none; }
+/* 通用隐藏：所有用 .hidden 控制显隐的元素 */
+.hidden { display: none !important; }
+#intro-overlay.fading { opacity: 0; }
+#intro-title {
+  font-size: 40px; letter-spacing: 14px; color: #3a2f1d;
+  margin-bottom: 28px; text-align: center; padding-left: 14px;
+  text-shadow: 0 1px 0 rgba(255,255,255,.5);
+}
+#intro-para {
+  font-size: 24px; line-height: 2.1; color: #8a7a5c; text-align: center;
+  max-width: 92%;
+}
+#intro-para span { transition: color 0.3s; }
+#intro-para span.lit { color: #2b2118; }
+
+/* 弹窗选择器 */
+.picker-overlay {
+  position: absolute; inset: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(26, 22, 17, 0.55); padding: 24px;
+}
+.picker-overlay.hidden { display: none; }
+/* 回向/放映/回放等弹窗盖住全局工具按钮（完成屏除外：它的功能按钮就在全局工具按钮里） */
+#dedicate-overlay, #inkplay-overlay, #sheetplay-overlay, #replay-overlay { z-index: 70; }
+.picker-card {
+  background: var(--bg-soft); border: 1px solid var(--line); border-radius: 20px;
+  padding: 24px 20px; width: 100%; max-width: 420px;
+  max-height: 82dvh; overflow-y: auto;
+}
+.picker-card h3 { margin: 0 0 16px; text-align: center; letter-spacing: 6px; font-size: 20px; }
+.picker-card .pick-cards { padding: 0; margin-bottom: 16px; }
+.done-seal { font-size: 48px; text-align: center; }
+.done-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+
+/* 左下角：工具 + 橡皮 */
+#write-ui {
+  position: absolute; z-index: 10;
+  left: calc(18px + env(safe-area-inset-left));
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  display: flex; gap: 14px;
+}
+.fab {
+  width: 60px; height: 60px; min-height: 60px; border-radius: 50%;
+  background: rgba(26, 22, 17, 0.85); border: 1px solid var(--gold-deep);
+  color: var(--gold); font-size: 24px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 16px rgba(0,0,0,.35);
+}
+
+.workview-title { font-size: 20px; margin: 0 0 4px; text-align: center; }
+
+/* 工具菜单：从左下角散布全屏（书写屏与全局共用） */
+.tools-menu { position: fixed; inset: 0; z-index: 60; pointer-events: none; }
+.tools-menu.hidden { display: none; }
+#global-tools {
+  position: fixed; z-index: 61;
+  left: calc(18px + env(safe-area-inset-left));
+  bottom: calc(24px + env(safe-area-inset-bottom));
+}
+.tool-item {
+  position: absolute; pointer-events: auto;
+  left: calc(18px + env(safe-area-inset-left));
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  width: 64px; height: 64px; min-height: 64px; border-radius: 50%; padding: 0;
+  background: rgba(26, 22, 17, 0.92); border: 1px solid var(--gold);
+  color: var(--ink); font-size: 15px; letter-spacing: 1px;
+  opacity: 0; transform: translate(0, 0) scale(0.4);
+  transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 0.25s;
+}
+.tools-menu.open .tool-item { opacity: 1; transform: translate(var(--tx), var(--ty)) scale(1); }
+.tool-item.off { color: var(--ink-dim); border-color: var(--line); }
+.tools-menu.open .tool-item:nth-child(1) { --tx: 12px;  --ty: -190px; }
+.tools-menu.open .tool-item:nth-child(2) { --tx: 92px;  --ty: -168px; }
+.tools-menu.open .tool-item:nth-child(3) { --tx: 158px; --ty: -118px; }
+.tools-menu.open .tool-item:nth-child(4) { --tx: 196px; --ty: -48px; }
+.tools-menu.open .tool-item:nth-child(5) { --tx: 150px; --ty: -210px; }
+.tools-menu.open .tool-item:nth-child(6) { --tx: 230px; --ty: -140px; }
+.tools-menu.open .tool-item:nth-child(7) { --tx: 250px; --ty: -60px; }
+.tools-menu.open .tool-item:nth-child(8) { --tx: 60px;  --ty: -250px; }
+.tools-menu.open .tool-item:nth-child(9) { --tx: 150px; --ty: -260px; }
+.tools-menu.open .tool-item:nth-child(10) { --tx: 230px; --ty: -210px; }
+
+/* 工具菜单内联选项面板：点 字体/背景音 时展开，其他工具按钮收起，不弹新界面 */
+.tool-panel {
+  position: absolute; pointer-events: auto;
+  left: calc(18px + env(safe-area-inset-left));
+  bottom: calc(100px + env(safe-area-inset-bottom));
+  width: min(340px, calc(100vw - 36px));
+  max-height: 62dvh; overflow-y: auto;
+  background: rgba(26, 22, 17, 0.96); border: 1px solid var(--gold);
+  border-radius: 16px; padding: 14px 0;
+}
+.tool-panel.hidden { display: none; }
+.tool-panel .pick-label { padding: 0 16px; margin-bottom: 8px; }
+.tool-panel .chip-row { padding: 0 16px; margin-bottom: 14px; }
+.tool-panel .vol-row { padding: 0 16px; margin-bottom: 14px; }
+.tool-panel .pick-cards { padding: 0 16px; }
+.tools-menu.panel-open .tool-item {
+  opacity: 0; transform: translate(0, 0) scale(0.4); pointer-events: none;
+}
+.tools-menu.panel-open .tool-item.active-tool {
+  opacity: 1; transform: translate(0, 0) scale(1); pointer-events: auto;
+}
+
+/* 悬浮小按钮 */
+.pill {
+  position: absolute; z-index: 15;
+  left: 50%; transform: translateX(-50%);
+  bottom: calc(110px + env(safe-area-inset-bottom));
+  background: rgba(26, 22, 17, 0.9); border: 1px solid var(--gold);
+  color: var(--gold); border-radius: 999px; font-size: 15px;
+  padding: 12px 26px; white-space: nowrap;
+}
+.pill.hidden { display: none; }
+#btn-force-next { border-color: var(--gold-deep); color: var(--ink); }
+
+/* 欣赏 */
+#work-head { text-align: center; padding: 18px 16px 6px; }
+#work-head h3 { margin: 0 0 6px; font-size: 24px; letter-spacing: 8px; }
+#work-head p { margin: 0; color: var(--ink-dim); font-size: 13px; }
+.work-sheet {
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 12px 20px 8px; align-items: center;
+}
+.work-char {
+  background: var(--paper); border-radius: 12px; padding: 10px;
+  box-shadow: 0 2px 10px rgba(0,0,0,.3); width: 200px;
+}
+#workview-sheet .work-char { cursor: pointer; }
+.work-char img { display: block; width: 100%; border-radius: 6px; }
+/* 燃过的纸卡：留灰烬 */
+.work-char.burned { box-shadow: 0 2px 10px rgba(0,0,0,.3), inset 0 0 12px rgba(110,100,75,.35); }
+.work-empty { color: var(--ink-dim); text-align: center; padding: 40px 0; }
+
+/* 打印：屏幕隐藏，打印时只显示作品 */
+#print-sheet { display: none; }
+@media print {
+  #app { display: none !important; }
+  #print-sheet { display: block; color: #000; background: #fff; }
+  #print-sheet h1 { text-align: center; letter-spacing: 10px; font-size: 28px; }
+  #print-sheet .print-meta { text-align: center; color: #555; font-size: 13px; margin-bottom: 16px; }
+  #print-sheet .print-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; }
+  #print-sheet .print-grid img { width: 100%; }
+}
+
+/* ---- 作品（v8）：画廊卡片 / 作品查看 / 回放 ---- */
+.sec-title { font-size: 16px; margin: 20px 16px 8px; color: var(--ink); }
+.foot-spacer { height: 40px; }
+.work-cards { display: flex; flex-direction: column; gap: 10px; padding: 0 16px; }
+.work-card {
+  border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+  background: var(--card); text-align: left; width: 100%;
+}
+.work-card:active { border-color: var(--gold); }
+.work-card .wc-title { font-size: 15px; font-weight: 600; }
+.work-card .wc-meta { font-size: 12px; color: var(--ink-dim); margin-top: 4px; }
+.work-card .wc-bar { height: 4px; border-radius: 2px; background: var(--line); margin-top: 8px; overflow: hidden; }
+.work-card .wc-bar i { display: block; height: 100%; background: var(--gold); border-radius: 2px; }
+.work-empty-hint { font-size: 13px; color: var(--ink-dim); padding: 4px 16px; }
+
+/* 抄本集合屏：按经文归集 */
+.collection-group { margin: 6px 0 18px; }
+.collection-head { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; margin-bottom: 4px; }
+.collection-name { font-size: 15px; font-weight: 600; color: var(--ink); }
+
+#workview-head { padding: 0 16px; }
+.workview-actions { display: flex; gap: 10px; margin: 12px 0; }
+/* 作品查看已改欣赏式纸卡（.work-char），旧字格样式移除 */
+
+/* 单字欣赏：全屏，界面同首次书写 */
+#screen-char {
+  position: fixed; inset: 0; z-index: 50;
+  padding: 0; min-height: 100dvh; background: var(--paper);
+}
+#char-paper, #char-ink {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  touch-action: none;
+}
+#char-paper { z-index: 1; }
+#char-ink { z-index: 2; }
+#screen-char.no-input #char-ink { pointer-events: none; } /* 回放态禁落笔 */
+#char-label {
+  position: absolute; top: calc(10px + env(safe-area-inset-top)); left: 0; right: 0; z-index: 3;
+  text-align: center; color: var(--ink-dim); font-size: 13px; letter-spacing: 2px;
+  pointer-events: none;
+}
+#char-label .char-nav { pointer-events: auto; padding: 6px 18px; font-size: 20px; color: var(--ink-dim); }
+#char-ui {
+  position: absolute; z-index: 4;
+  left: calc(18px + env(safe-area-inset-left)); bottom: calc(24px + env(safe-area-inset-bottom));
+  display: flex; gap: 12px;
+}
+.char-toast {
+  position: absolute; z-index: 5; left: 50%; bottom: 110px; transform: translateX(-50%);
+  background: rgba(26,22,17,.85); color: var(--gold); font-size: 13px; letter-spacing: 2px;
+  padding: 8px 18px; border-radius: 999px; border: 1px solid var(--gold-deep);
+  transition: opacity .3s;
+}
+
+/* 完成后去向选择 */
+.farewell-block { margin: 4px 0 8px; padding: 10px 0 2px; border-top: 1px solid var(--line); }
+.farewell-title { text-align: center; font-size: 13px; color: var(--ink-dim); margin: 0 0 8px; letter-spacing: 2px; }
+.farewell-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 8px; }
+
+/* 作品查看：欣赏式纸卡（.work-char），见上方 */
+/* 落笔放映 */
+.inkplay-card { width: min(94vw, 480px); }
+.inkplay-stage { position: relative; width: 100%; aspect-ratio: 3/4; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--paper); margin: 0 auto; }
+.inkplay-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.inkplay-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+#inkplay-label { font-size: 14px; color: var(--ink-dim); }
+
+/* 整纸放映 */
+.sheetplay-card { width: min(96vw, 560px); max-height: 92vh; display: flex; flex-direction: column; overflow: hidden; }
+.sheetplay-scroll { overflow-y: auto; flex: 1; min-height: 0; -webkit-overflow-scrolling: touch; }
+.sheetplay-sheet { margin: 0 auto 12px; }
+.sheetplay-sheet .sheet-cell canvas { width: 100%; height: 100%; display: block; }
+.sheetplay-sheet .sheet-cell.playing { outline: 2px solid #b98a2f; outline-offset: -2px; border-radius: 3px; background: rgba(185,138,47,.10); }
+#sheetplay-label { font-size: 14px; color: var(--ink-dim); }
+
+/* 回向 */
+.dedication-block { margin: 10px 16px 0; padding: 12px 14px; border-radius: 10px;
+  background: #f7f1e3; border: 1px solid #e0d0a8; }
+.dedication-label { font-size: 13px; letter-spacing: 3px; color: #8a6d2f; margin-bottom: 6px; }
+.dedication-text { font-size: 15px; line-height: 2; color: #4a3b28; margin: 0;
+  font-family: "Songti SC", "Noto Serif CJK SC", serif; }
+.dedicate-card { width: min(92vw, 420px); }
+.dedicate-label2 { display: block; font-size: 13px; color: var(--ink-dim); margin: 10px 0 4px; }
+.text-input { width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 15px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); }
+.dedicate-preview { font-size: 14px; line-height: 2; color: #4a3b28;
+  font-family: "Songti SC", "Noto Serif CJK SC", serif;
+  background: #f7f1e3; border: 1px solid #e0d0a8; border-radius: 8px; padding: 10px 12px; margin: 4px 0 0; }
+
+/* 回向仪式：顶部只有一条薄透条（半透明回向文 + 进度条），下方纸完整可见、燃烧可见 */
+#ceremony-overlay { position: fixed; inset: 0; z-index: 80; display: flex; flex-direction: column; }
+#ceremony-overlay.hidden { display: none !important; }
+.ceremony-veil { display: none; } /* 不再压暗：纸与燃烧全程清晰可见 */
+.ceremony-banner { position: relative; z-index: 2; flex: none;
+  padding: 8px 16px 16px;
+  background: linear-gradient(to bottom, rgba(24,19,12,.88), rgba(24,19,12,.5) 62%, rgba(24,19,12,0));
+  border-bottom: none; max-height: 30vh; overflow-y: auto; }
+#ceremony-stage { position: relative; z-index: 1; flex: 1; overflow-y: auto; padding-bottom: 28px; }
+
+/* 双视图：逐字 | 整纸 */
+.view-toggle { display: flex; gap: 10px; justify-content: center; margin: 12px 0 6px; }
+.vt-btn { padding: 6px 26px; border-radius: 20px; border: 1px solid var(--line);
+  background: transparent; color: var(--ink-dim); font-size: 14px; letter-spacing: 4px; }
+.vt-btn.active { background: var(--gold); border-color: var(--gold); color: #1a1408; font-weight: 700; }
+
+/* 逐字：一列大纸卡，上下滚动浏览，点卡回放 */
+.char-list { display: flex; flex-direction: column; gap: 20px; padding: 14px 0 34px; align-items: center; }
+.list-card { width: min(80vw, 360px); }
+.list-cap { text-align: center; font-size: 13px; color: var(--ink-dim); margin-top: 8px; letter-spacing: 2px; }
+
+/* 整纸：横排，复刻 PDF 版式（等比缩小），只收录写过的字 */
+.dual-sheet { display: flex; flex-direction: column; gap: 22px; padding: 14px 0 34px; align-items: center; }
+.paper-sheet {
+  background: linear-gradient(135deg, #f7f1e0 0%, #f1e7cd 60%, #e9dcc0 100%);
+  border: 1px solid #d8c69a; border-radius: 6px;
+  box-shadow: 0 4px 18px rgba(0,0,0,.45), inset 0 0 40px rgba(150,120,70,.18);
+  padding: 24px 20px; margin: 0 14px 18px; width: calc(100% - 28px); max-width: 760px; box-sizing: border-box;
+}
+/* 整纸版式复刻 PDF（等比缩小 0.6）：标题 28→17，字格 120→72，间距 10→6 */
+.sheet-title {
+  text-align: center; white-space: nowrap; overflow: hidden;
+  font-size: 17px; color: #2b2118; letter-spacing: 6px; text-indent: 6px;
+  margin: 4px 0 6px; line-height: 1.4;
+}
+.sheet-meta {
+  text-align: center; white-space: nowrap; overflow: hidden;
+  font-size: 11px; color: #8a7a5f; margin-bottom: 12px;
+}
+.sheet-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+/* 字格：通用正方形（全部字形边框的最大者），同一比例，无格线 */
+.sheet-cell { margin: 0; line-height: 0; aspect-ratio: 1; }
+.sheet-cell img { width: 100%; height: 100%; display: block; }
+.sheet-cell.burned { box-shadow: inset 0 0 10px rgba(110,100,75,.4); border-radius: 4px; }
+.sheet-cell.burned img { object-fit: cover; }
+.work-empty-hint { color: var(--ink-dim); text-align: center; font-size: 13px; padding: 6px 0 20px; }
+.ceremony-title-row { display: flex; align-items: center; justify-content: space-between; }
+.ceremony-banner .dedication-label { color: rgba(222,192,132,.92); margin-bottom: 4px;
+  text-shadow: 0 1px 6px rgba(0,0,0,.7); }
+#ceremony-fold { padding: 2px 8px; font-size: 12px; opacity: .85; }
+.ceremony-banner.collapsed #ceremony-text { display: none; }
+.ceremony-text { font-size: 14px; line-height: 1.8; color: rgba(232,221,200,.82);
+  text-shadow: 0 1px 8px rgba(0,0,0,.75);
+  font-family: "Songti SC", "Noto Serif CJK SC", serif; letter-spacing: 1px; }
+.ceremony-text .ch-read { color: rgba(255,217,120,.96); text-shadow: 0 0 10px rgba(255,217,120,.65); }
+.ceremony-status { margin-top: 6px; font-size: 12px; color: rgba(205,175,115,.85); letter-spacing: 2px;
+  text-shadow: 0 1px 6px rgba(0,0,0,.7); }
+.ceremony-done-mark { color: #ffd978; font-size: 20px; letter-spacing: 4px; text-align: center; margin-top: 6px; }
+/* 回向进度条 */
+.ceremony-progress {
+  height: 3px; background: rgba(232,179,75,.18); border-radius: 2px;
+  margin: 10px 2px 2px; overflow: hidden;
+}
+.ceremony-progress i {
+  display: block; height: 100%; width: 0%;
+  background: linear-gradient(90deg, #b8862f, #f4d47c);
+  border-radius: 2px; transition: width .15s linear;
+}
+/* 回向文种类选择 */
+.dedicate-kinds { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 4px; }
+.dedicate-kinds .chip.active { background: #8a6d2f; color: #fff; border-color: #8a6d2f; }
+.dedicate-label2 { font-size: 13px; color: #8a6d2f; margin: 10px 0 6px; letter-spacing: 2px; }
+/* 经文库回向计数按钮 */
+.ded-count { margin-top: 8px; padding: 6px 14px; font-size: 13px; border: 1px solid #c9a86a;
+  background: rgba(201,168,106,.12); color: #8a6d2f; border-radius: 999px; letter-spacing: 1px; }
+/* 回向记录墙 */
+.ded-wall { display: flex; flex-direction: column; gap: 14px; padding: 4px 14px 24px; }
+.ded-card { background: linear-gradient(160deg, #f7f1e3, #efe5cf);
+  border: 1px solid #d9c9a3; border-radius: 10px; padding: 14px; }
+.ded-text { font-size: 15px; line-height: 2; color: #4a3b28; letter-spacing: 1px;
+  font-family: "Songti SC", "Noto Serif CJK SC", serif; }
+.ded-ash { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 10px;
+  padding: 8px; background: rgba(60,50,35,.08); border-radius: 6px; }
+.ded-ashcell { width: 16px; height: 16px; border-radius: 3px;
+  background: radial-gradient(circle at 40% 35%, #b9ab8f 0%, #8d7f66 55%, #6e6350 100%);
+  opacity: .85; }
+.ded-ashmore { font-size: 11px; color: #8a6d2f; align-self: center; margin-left: 4px; }
+.ded-foot { margin-top: 8px; font-size: 12px; color: #9a8a6a; letter-spacing: 1px; }
+
+/* ---- 上传经书（v54） ---- */
+.upload-card { width: min(92vw, 440px); max-height: 88vh; overflow-y: auto; }
+.upload-pledge { color: #8a6d2f; }
+.upload-textarea { min-height: 120px; resize: vertical; line-height: 1.6; }
+.upload-file-label { display: inline-block; margin: 6px 0 2px; font-size: 14px; color: #8a6d2f;
+  border: 1px dashed #b49b5e; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+.upload-check { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0 2px;
+  font-size: 14px; color: var(--ink); cursor: pointer; }
+.upload-check input { margin-top: 3px; width: 16px; height: 16px; }
+.badge-upload { display: inline-block; font-size: 11px; border: 1px solid #b49b5e; color: #8a6d2f;
+  border-radius: 6px; padding: 1px 6px; margin-left: 6px; vertical-align: 1px; }
+.sutra-own-actions { margin-top: 6px; display: flex; gap: 8px; }
+.btn-mini { font-size: 12px; padding: 5px 10px; border-radius: 8px; border: 1px solid #b49b5e;
+  background: transparent; color: #8a6d2f; }
+.btn-mini.danger { border-color: #b05c5c; color: #b05c5c; }
+
+</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@600&display=swap">
+</head>
+<body>
+<div id="app">
+
+  <!-- 1. 推荐码进入页 -->
+  <section id="screen-invite" class="screen">
+    <div class="invite-card">
+      <div class="invite-seal">🪷</div>
+      <h1>抄经</h1>
+      <p class="subtitle">一笔一划 · 安心静虑</p>
+      <input id="invite-code" type="text" placeholder="请输入推荐码" autocomplete="off" autocapitalize="characters">
+      <button id="btn-verify" class="btn-primary">进入</button>
+      <p id="invite-msg" class="msg"></p>
+    </div>
+  </section>
+
+  <!-- 2. 注册 / 登录 -->
+  <section id="screen-auth" class="screen">
+    <div class="invite-card">
+      <div class="invite-seal">🪷</div>
+      <h1 id="auth-title">注册</h1>
+      <p class="invite-sub" id="auth-sub">推荐码验证通过，请注册账号</p>
+      <div class="filter-row" style="justify-content:center">
+        <button class="chip active" id="chip-mode-register">注册</button>
+        <button class="chip" id="chip-mode-login">登录</button>
+      </div>
+      <div class="filter-row" style="justify-content:center;margin-top:8px">
+        <button class="chip active" id="chip-type-phone">手机</button>
+        <button class="chip" id="chip-type-email">邮箱</button>
+      </div>
+      <input id="auth-account" class="invite-input" placeholder="手机号" inputmode="tel" autocomplete="tel">
+      <div id="auth-code-row" class="code-row">
+        <input id="auth-code" class="invite-input" placeholder="验证码" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
+        <button id="btn-auth-send-code">发送验证码</button>
+      </div>
+      <input id="auth-password" class="invite-input" type="password" placeholder="密码（至少 6 位）" autocomplete="current-password">
+      <button id="btn-auth-submit" class="btn-primary">注册</button>
+      <p id="auth-msg" class="msg"></p>
+      <button id="btn-auth-reinvite" class="btn-ghost">重新输入推荐码</button>
+    </div>
+  </section>
+
+  <!-- 3. 经文库列表 -->
+  <section id="screen-library" class="screen active">
+    <div class="filter-row">
+      <button class="chip active" data-trad="all">全部</button>
+      <button class="chip" data-trad="buddhist">佛经</button>
+      <button class="chip" data-trad="taoist">道经</button>
+      <button class="chip" data-trad="custom">同修</button>
+    </div>
+    <ul id="sutra-list" class="sutra-list"></ul>
+    <div class="foot-spacer"></div>
+  </section>
+
+  <!-- 抄本集合：按经文归集的作品（公开抄本 / 我的抄本） -->
+  <section id="screen-collection" class="screen">
+    <h2 id="collection-title" class="sec-title"></h2>
+    <div id="collection-groups"></div>
+    <div class="foot-spacer"></div>
+  </section>
+
+  <!-- 4. 全屏抄写 -->
+  <section id="screen-write" class="screen">
+    <canvas id="paper-canvas"></canvas>
+    <canvas id="ink-canvas"></canvas>
+
+    <!-- 开场：经名 2 秒 / 段落慢读高亮 -->
+    <div id="intro-overlay" class="hidden">
+      <div id="intro-title"></div>
+      <div id="intro-para"></div>
+    </div>
+
+    <!-- 选笔（首次） -->
+
+    <!-- 左下角：工具 + 橡皮 -->
+    <div id="write-ui">
+      <button id="btn-tools" class="fab" aria-label="工具">☰</button>
+      <button id="btn-eraser" class="fab" aria-label="橡皮擦">🧽</button>
+    </div>
+
+    <!-- 工具菜单：散布全屏 -->
+    <div id="tools-menu" class="tools-menu hidden">
+      <button class="tool-item" data-tool="sutra">经文</button>
+      <button class="tool-item" data-tool="font">字体</button>
+      <button class="tool-item" data-tool="music">背景音</button>
+      <button class="tool-item" data-tool="gamma40">40Hz</button>
+      <button class="tool-item" data-tool="view">欣赏</button>
+      <button class="tool-item" data-tool="share">分享</button>
+      <!-- 内联选项面板：点 字体/背景音 时在菜单内展开，不弹新界面、不切屏 -->
+      <div id="tool-panel" class="tool-panel hidden" data-tool="">
+        <div id="tool-panel-body"></div>
+      </div>
+    </div>
+
+    <!-- 写完一字的过渡按钮 -->
+    <button id="btn-keep-editing" class="pill hidden">继续改写</button>
+    <button id="btn-force-next" class="pill hidden">写好了 →</button>
+
+    <!-- 全部写完 -->
+    <div id="done-overlay" class="picker-overlay hidden">
+      <div class="picker-card" id="done-main">
+        <div class="done-seal">🪷</div>
+        <h3>全部写完</h3>
+        <p id="done-summary" class="picker-hint"></p>
+        <div id="done-farewell" class="farewell-block">
+          <p class="farewell-title">此作何去</p>
+          <div id="farewell-modes" class="farewell-row"></div>
+          <div id="farewell-days-row" class="farewell-row hidden">
+            <button class="chip" data-days="0">即刻</button>
+            <button class="chip" data-days="1">1 日后</button>
+            <button class="chip" data-days="3">3 日后</button>
+            <button class="chip active" data-days="7">7 日后</button>
+          </div>
+          <p id="farewell-note" class="picker-hint"></p>
+        </div>
+      </div>
+      <div class="picker-card hidden" id="done-cremated">
+        <div class="done-seal">🪷</div>
+        <h3>尘归尘 · 功德圆满</h3>
+        <p class="picker-hint">此作已焚化，形化去，功德留存。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5b. 回向记录：一部经的全部回向（公开与个人） -->
+  <section id="screen-dedications" class="screen">
+    <h3 id="ded-wall-title" class="sec-title">回向记录</h3>
+    <div id="ded-wall" class="ded-wall"></div>
+    <div class="foot-spacer"></div>
+  </section>
+
+  <!-- 6. 作品查看：只有纸（标题写进纸里）；回向文保留展示；录音只供放映播放 -->
+  <section id="screen-work" class="screen">
+    <div id="dedication-block" class="dedication-block hidden">
+      <div class="dedication-label">🪷 回向文</div>
+      <p id="dedication-text" class="dedication-text"></p>
+      <p id="dedication-meta" class="picker-hint"></p>
+    </div>
+    <audio id="workview-audio" style="display:none"></audio>
+    <div id="workview-dual"></div>
+    <div class="foot-spacer"></div>
+  </section>
+
+</div>
+
+<!-- 全局工具按钮：各屏功能按钮收拢于此（书写屏用自己的工具菜单） -->
+<button id="global-tools" class="fab" style="display:none" aria-label="工具">☰</button>
+<div id="global-menu" class="tools-menu hidden"></div>
+
+  <!-- 单字欣赏：全屏，界面同首次书写该字 -->
+  <section id="screen-char" class="screen">
+    <canvas id="char-paper"></canvas>
+    <canvas id="char-ink"></canvas>
+    <div id="char-label"><span id="char-prev" class="char-nav">‹</span><span id="char-title"></span><span id="char-next" class="char-nav">›</span></div>
+    <div id="char-ui">
+      <button id="btn-char-tools" class="fab" aria-label="工具">☰</button>
+      <button id="btn-char-eraser" class="fab" aria-label="橡皮擦">🧽</button>
+      <button id="btn-char-play" class="fab" aria-label="重播">▶</button>
+    </div>
+    <div id="char-menu" class="tools-menu hidden">
+      <button class="tool-item" data-ctool="back">返回</button>
+    </div>
+    <div id="char-toast" class="char-toast hidden"></div>
+  </section>
+
+<!-- 落笔放映：整部作品按原节奏依次重演，如有人在眼前落笔 -->
+<div id="inkplay-overlay" class="picker-overlay hidden">
+  <div class="picker-card inkplay-card">
+    <div class="inkplay-stage" id="inkplay-stage">
+      <canvas id="inkplay-paper"></canvas>
+      <canvas id="inkplay-ink"></canvas>
+    </div>
+    <div class="inkplay-bar">
+      <span id="inkplay-label"></span>
+      <button id="btn-inkplay-close" class="btn-ghost">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 整纸放映：一页纸上按顺序逐字重演笔画 -->
+<div id="sheetplay-overlay" class="picker-overlay hidden">
+  <div class="picker-card sheetplay-card">
+    <div class="sheetplay-scroll" id="sheetplay-scroll">
+      <div class="paper-sheet sheetplay-sheet">
+        <div class="sheet-grid" id="sheetplay-grid"></div>
+      </div>
+    </div>
+    <div class="inkplay-bar">
+      <span id="sheetplay-label"></span>
+      <button id="btn-sheetplay-close" class="btn-ghost">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 回向对话框 -->
+<div id="dedicate-overlay" class="picker-overlay hidden">
+  <div class="picker-card dedicate-card">
+    <h3>🪷 回向</h3>
+    <p class="picker-hint">字迹将化烟而去，唯留尘埃与回向文。此后不可再欣赏、续写，请郑重。</p>
+    <label class="dedicate-label2" for="dedicate-target">回向对象</label>
+    <input id="dedicate-target" class="text-input" maxlength="40" placeholder="法界一切众生">
+    <div class="dedicate-label2">回向文</div>
+    <div id="dedicate-kinds" class="dedicate-kinds">
+      <button data-kind="huixiangji" class="chip">回向偈</button>
+      <button data-kind="puxian" class="chip">普贤回向</button>
+      <button data-kind="pingdeng" class="chip">平等回向</button>
+      <button data-kind="xiaozai" class="chip">消灾祈福</button>
+    </div>
+    <p id="dedicate-preview" class="dedicate-preview"></p>
+    <div class="dedicate-label2">回向署名</div>
+    <div id="dedicate-names" class="dedicate-kinds">
+      <button data-anon="1" class="chip active">匿名</button>
+      <button data-anon="0" class="chip">署名</button>
+    </div>
+    <input id="dedicate-sign" class="text-input hidden" maxlength="20" placeholder="署名，如：妙音居士">
+    <div class="inkplay-bar">
+      <button id="btn-dedicate-confirm" class="btn-primary">开始回向</button>
+      <button id="btn-dedicate-cancel" class="btn-ghost">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 上传经书（登录用户） -->
+<div id="upload-overlay" class="picker-overlay hidden">
+  <div class="picker-card upload-card">
+    <h3>📜 上传经书</h3>
+    <p class="picker-hint upload-pledge">请上传导人向善的经文，以经劝善。勿传违法违规、淫秽暴力、广告或侵犯他人版权的内容，违规将被删除。</p>
+    <label class="dedicate-label2" for="upload-title">经名</label>
+    <input id="upload-title" class="text-input" maxlength="50" placeholder="如：父母恩重难报经">
+    <label class="dedicate-label2" for="upload-intro">简介（选填）</label>
+    <input id="upload-intro" class="text-input" maxlength="200" placeholder="一句话介绍这部经">
+    <label class="dedicate-label2" for="upload-content">经文内容</label>
+    <textarea id="upload-content" class="text-input upload-textarea" placeholder="粘贴经文全文，或从 .txt 文件导入"></textarea>
+    <label class="upload-file-label" for="upload-file">📄 从 .txt 文件导入</label>
+    <input id="upload-file" type="file" accept=".txt,.text,text/plain" class="hidden">
+    <div class="dedicate-label2">可见性</div>
+    <div id="upload-vis" class="dedicate-kinds">
+      <button data-vis="public" class="chip active">公开</button>
+      <button data-vis="private" class="chip">私有</button>
+    </div>
+    <label class="upload-check"><input id="upload-pledge" type="checkbox"> 我承诺所传经文用于劝人向善</label>
+    <p id="upload-quota" class="picker-hint"></p>
+    <div class="inkplay-bar">
+      <button id="btn-upload-confirm" class="btn-primary">上传</button>
+      <button id="btn-upload-cancel" class="btn-ghost">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- 回向仪式：读文 + 化烟 -->
+<div id="ceremony-overlay" class="hidden">
+  <div class="ceremony-veil"></div>
+  <div class="ceremony-banner" id="ceremony-banner">
+    <div class="ceremony-title-row">
+      <div class="dedication-label">🪷 回向文</div>
+      <button id="ceremony-fold" class="btn-ghost">收起 ↑</button>
+    </div>
+    <div id="ceremony-text" class="ceremony-text"></div>
+    <div class="ceremony-progress"><i id="ceremony-progress-i"></i></div>
+    <div id="ceremony-status" class="ceremony-status">字迹化烟中……</div>
+  </div>
+  <div id="ceremony-stage"></div>
+</div>
+
+<!-- 打印专用：屏幕上隐藏，打印时显示 -->
+<div id="print-sheet"></div>
+
+<script>
+/* inlined: music.js */
+/* 抄经应用 · 生成式氛围音乐引擎（Web Audio，无外部资源）
+ *
+ * 设计：
+ * - 以中国五声音阶（宫商角徵羽）为音高材料，相对半音 [0, 2, 4, 7, 9]
+ * - 每部经文配一组参数：{ root_midi, tempo_bpm, timbre, mood, gamma }
+ * - 声部：
+ *     L0 持续低音 drone（一直开）
+ *     L1 轻磬：纯净柔和的磬声，余韵悠长（书写慢/停时浮现）
+ *     L2 和声铺底 pad（p > 0.45；写得快时降到三成）
+ *     L3 小磬 + 泉消 + 细雨（书写慢/停时浮现）
+ *     L4 gamma 脑波层（一直开）
+ * - 书写 activity 0~1（0=静止/慢，1=疾书）：setActivity() 设目标，
+ *   内部每 0.7s 平滑跟随；activity 高 → 自然声部淡出，只留 L0 + gamma
+ * - 自然声出现条件（setNatureFlags({chime, spring, rain})，由 app.js 按书写节奏评估）：
+ *     chime（高音：L1 轻磬 / L3 小磬）：停笔时间 > 用户通常 5 个字的换字时间
+ *     spring（泉消）：慢写（本字书写超过前两个字）
+ *     rain（细雨）：连续慢写 4 个字
+ */
+(function (global) {
+  'use strict';
+
+  // 宫 商 角 徵 羽（相对半音）
+  var PENTA = [0, 2, 4, 7, 9];
+
+  function midiToFreq(m) {
+    return 440 * Math.pow(2, (m - 69) / 12);
+  }
+
+  function MusicEngine() {
+    this.ctx = null;
+    this.master = null;
+    this.layers = {};      // L0..L4 的 gain 节点
+    this.timers = [];
+    this.config = { root_midi: 57, tempo_bpm: 50, timbre: 'soft_sine', mood: '' };
+    this.playing = false;
+    this.muted = false;
+    this.noteIndex = 0;    // 五声音阶随机游走当前位置
+    // 40Hz 铺底开关：用户可选，默认开，localStorage 记住
+    var savedGamma = null;
+    try { savedGamma = localStorage.getItem('sutra_gamma40'); } catch (e) {}
+    this._gammaOn = savedGamma !== '0';
+    // 低音声部风格：'drone' 持续低音（默认）/ 'bigchime' 大罄，localStorage 记住
+    var savedBass = null;
+    try { savedBass = localStorage.getItem('sutra_bass'); } catch (e) {}
+    this._bassStyle = savedBass === 'bigchime' ? 'bigchime' : 'drone';
+    this._bassNodes = [];   // drone 振荡器（切换风格时停掉）
+    this._bassTimers = [];  // 大罄敲击定时器
+  }
+
+  MusicEngine.prototype.setConfig = function (cfg) {
+    for (var k in cfg) {
+      if (cfg[k] !== undefined && cfg[k] !== null) this.config[k] = cfg[k];
+    }
+  };
+
+  MusicEngine.prototype._ensureCtx = function () {
+    if (this.ctx) return;
+    var AC = global.AudioContext || global.webkitAudioContext;
+    // latencyHint: 'playback' —— 增大音频缓冲，防手机端 CPU 繁忙时随机爆音（环境音乐对延迟不敏感）
+    try { this.ctx = new AC({ latencyHint: 'playback' }); }
+    catch (e) { this.ctx = new AC(); }
+    this.master = this.ctx.createGain();
+    this.master.gain.value = this.muted ? 0 : 0.6;
+    this.master.connect(this.ctx.destination);
+    for (var i = 0; i < 5; i++) {
+      var g = this.ctx.createGain();
+      g.gain.value = 0;
+      g.connect(this.master);
+      this.layers['L' + i] = g;
+    }
+    // 4 秒噪声缓冲：泉消 / 细雨共用
+    var nb = this.ctx.createBuffer(1, this.ctx.sampleRate * 4, this.ctx.sampleRate);
+    var nd = nb.getChannelData(0);
+    for (var n = 0; n < nd.length; n++) nd[n] = Math.random() * 2 - 1;
+    // 尾部 0.2 秒渐变为头部首值：loop 循环点连续，消除周期性爆破音
+    var fadeLen = Math.floor(this.ctx.sampleRate * 0.2);
+    for (var fi = 0; fi < fadeLen; fi++) {
+      var ft = fi / (fadeLen - 1); // 0 → 1
+      var tailIdx = nd.length - fadeLen + fi;
+      nd[tailIdx] = nd[tailIdx] * (1 - ft) + nd[0] * ft;
+    }
+    this._noiseBuf = nb;
+  };
+
+  // 简单拨弦音色：triangle + 指数衰减包络
+  MusicEngine.prototype._pluck = function (midi, when, dur, vol, layer) {
+    var ctx = this.ctx;
+    var osc = ctx.createOscillator();
+    osc.type = this.config.timbre === 'bell' ? 'sine' : 'triangle';
+    osc.frequency.value = midiToFreq(midi);
+    var g = ctx.createGain();
+    g.gain.setValueAtTime(0, when);
+    g.gain.linearRampToValueAtTime(vol, when + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    osc.connect(g);
+    g.connect(this.layers[layer]);
+    osc.start(when);
+    osc.stop(when + dur + 0.1);
+  };
+
+  // L0 低音声部：两种风格可选（'drone' 持续低音 / 'bigchime' 大罄）
+  MusicEngine.prototype._stopBass = function () {
+    if (this._bassNodes) {
+      this._bassNodes.forEach(function (n) { try { n.stop(); } catch (e) {} });
+      this._bassNodes = [];
+    }
+    if (this._bassTimers) {
+      this._bassTimers.forEach(clearTimeout);
+      this._bassTimers = [];
+    }
+  };
+
+  // 低音风格调度：先停旧声部，再按当前风格启动；L0 总线不断层
+  MusicEngine.prototype._startBass = function () {
+    this._stopBass();
+    if (this._bassStyle === 'bigchime') this._startBigChime();
+    else this._startDrone();
+    if (this.ctx) this.layers.L0.gain.setTargetAtTime(1, this.ctx.currentTime, 2);
+  };
+
+  // 低音风格：用户二选一（播放中即时切换，记住选择）
+  MusicEngine.prototype.setBassStyle = function (s) {
+    this._bassStyle = (s === 'bigchime') ? 'bigchime' : 'drone';
+    try { localStorage.setItem('sutra_bass', this._bassStyle); } catch (e) {}
+    if (this.playing) this._startBass();
+  };
+  MusicEngine.prototype.getBassStyle = function () {
+    return this._bassStyle === 'bigchime' ? 'bigchime' : 'drone';
+  };
+
+  // L0 持续低音（根音 + 高五度），极慢呼吸式起伏
+  MusicEngine.prototype._startDrone = function () {
+    var ctx = this.ctx, root = this.config.root_midi;
+    var self = this;
+    this._bassNodes = [];
+    [0, 7].forEach(function (iv, i) {
+      var osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = midiToFreq(root - 12 + iv);
+      var g = ctx.createGain();
+      g.gain.value = i === 0 ? 0.10 : 0.05;
+      var lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.07 + i * 0.03;
+      var lfoG = ctx.createGain();
+      lfoG.gain.value = 0.03;
+      lfo.connect(lfoG); lfoG.connect(g.gain);
+      osc.connect(g); g.connect(self.layers.L0);
+      osc.start(); lfo.start();
+      self._bassNodes.push(osc, lfo);
+    });
+  };
+
+  // 大罄：一击深沉寺磬（低八度 + 非谐泛音列，余韵可达 30 分钟）
+  MusicEngine.prototype._bigChime = function (when) {
+    var ctx = this.ctx, self = this;
+    var base = midiToFreq(this.config.root_midi - 12);
+    // [倍频, 相对音量, 衰减秒数]
+    [[1, 1.0, 1800], [2.01, 0.45, 1350], [2.74, 0.30, 1080], [3.76, 0.18, 810], [5.43, 0.10, 630]].forEach(function (pr) {
+      var osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = base * pr[0];
+      var g = ctx.createGain();
+      g.gain.setValueAtTime(0, when);
+      g.gain.linearRampToValueAtTime(0.085 * pr[1], when + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, when + pr[2]);
+      osc.connect(g);
+      g.connect(self.layers.L0);
+      osc.start(when);
+      osc.stop(when + pr[2] + 0.5);
+      self._bassNodes.push(osc); // 跟踪：切换风格时停掉，不留 30 分钟余音鬼影
+    });
+  };
+
+  // 大罄：低音声部一直开，每 31 分钟敲一下
+  MusicEngine.prototype._startBigChime = function () {
+    var self = this;
+    this._bassTimers = [];
+    var INTERVAL = 31 * 60 * 1000;
+    function tick() {
+      if (!self.playing) return;
+      self._bigChime(self.ctx.currentTime + 0.05);
+      self._bassTimers.push(setTimeout(tick, INTERVAL));
+    }
+    // 开场先敲一声，确立低音
+    this._bigChime(this.ctx.currentTime + 0.1);
+    this._bassTimers.push(setTimeout(tick, INTERVAL));
+  };
+
+  // 背景音三选一：静 / 弦（持续低音） / 罄（大罄）
+  MusicEngine.prototype.setBgMode = function (mode) {
+    if (mode !== 'strings' && mode !== 'chime') mode = 'silent';
+    try { localStorage.setItem('sutra_bgmode', mode); } catch (e) {}
+    if (mode === 'silent') { this.stop(); return; }
+    this.setBassStyle(mode === 'chime' ? 'bigchime' : 'drone');
+    if (!this.playing) this.start();
+  };
+  MusicEngine.prototype.getSavedBgMode = function () {
+    try {
+      var m = localStorage.getItem('sutra_bgmode');
+      if (m === 'silent' || m === 'strings' || m === 'chime') return m;
+    } catch (e) {}
+    return 'strings'; // 默认：开（弦）
+  };
+  MusicEngine.prototype.getBgMode = function () {
+    if (!this.playing) return this.getSavedBgMode();
+    return this._bassStyle === 'bigchime' ? 'chime' : 'strings';
+  };
+
+  // L1 轻磬：纯净柔和，一声、余韵悠长（近谐泛音，无滑音）
+  MusicEngine.prototype._lightChime = function (when) {
+    var ctx = this.ctx, self = this;
+    var base = midiToFreq(this.config.root_midi + 24); // 高两个八度
+    [[1, 1.0], [2.003, 0.35], [2.997, 0.15]].forEach(function (pr) {
+      var osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = base * pr[0];
+      var g = ctx.createGain();
+      g.gain.setValueAtTime(0, when);
+      g.gain.linearRampToValueAtTime(0.030 * pr[1], when + 0.08); // 轻起音
+      g.gain.exponentialRampToValueAtTime(0.0001, when + 6 + Math.random() * 4);
+      osc.connect(g);
+      g.connect(self.layers.L1);
+      osc.start(when);
+      osc.stop(when + 12);
+    });
+  };
+
+  MusicEngine.prototype._startLightChimes = function () {
+    var self = this;
+    function tick() {
+      if (!self.playing) return;
+      // 高音只在停笔足够久（条件成立）且非疾书时触发
+      if (self._chimeArmed) {
+        var t = self.ctx.currentTime + 0.05;
+        self._lightChime(t);
+        if (Math.random() < 0.2) self._lightChime(t + 2.5 + Math.random() * 3); // 偶尔应和一声
+      }
+      self.timers.push(setTimeout(tick, 12000 + Math.random() * 18000));
+    }
+    tick();
+  };
+
+  // L2：和声铺底（根音三和弦的五声化和）
+  MusicEngine.prototype._startPad = function () {
+    var self = this;
+    var beat = 60 / this.config.tempo_bpm;
+    var chords = [[0, 4, 7], [7, 12, 16], [4, 7, 12], [0, 7, 12]];
+    var ci = 0;
+    function tick() {
+      if (!self.playing) return;
+      var t = self.ctx.currentTime + 0.05;
+      chords[ci % chords.length].forEach(function (iv) {
+        self._pluck(self.config.root_midi + iv, t, beat * 8, 0.05, 'L2');
+      });
+      ci++;
+      self.timers.push(setTimeout(tick, beat * 1000 * 4));
+    }
+    tick();
+  };
+
+  // L3 小磬：微失谐泛音，一击、十几秒自然衰减
+  MusicEngine.prototype._chime = function (when) {
+    var ctx = this.ctx, self = this;
+    var base = midiToFreq(this.config.root_midi + 24); // 高两个八度
+    [1, 2.02, 2.94].forEach(function (r, i) {
+      [-2, 2].forEach(function (cents) { // ±2 音分失谐 → 慢拍频 shimmer
+        var osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = base * r * Math.pow(2, cents / 1200);
+        var g = ctx.createGain();
+        g.gain.setValueAtTime(0, when);
+        g.gain.linearRampToValueAtTime(0.035 / (i + 1) / 2, when + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, when + 12 + Math.random() * 6);
+        osc.connect(g);
+        g.connect(self.layers.L3);
+        osc.start(when);
+        osc.stop(when + 20);
+      });
+    });
+  };
+
+  MusicEngine.prototype._startChime = function () {
+    var self = this;
+    function tick() {
+      if (!self.playing) return;
+      if (self._chimeArmed) self._chime(self.ctx.currentTime + 0.05);
+      self.timers.push(setTimeout(tick, 40000 + Math.random() * 60000));
+    }
+    tick();
+  };
+
+  // L3 泉消：带通噪声 + 极慢起伏，一起一伏约 22 秒
+  MusicEngine.prototype._startSpring = function () {
+    var ctx = this.ctx;
+    var src = ctx.createBufferSource();
+    src.buffer = this._noiseBuf;
+    src.loop = true;
+    var bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 1100;
+    bp.Q.value = 0.7;
+    var g = ctx.createGain();
+    g.gain.value = 0; // 初始静音，由门控按"慢写"条件淡入
+    this._springGain = g;
+    var lfo = ctx.createOscillator();
+    lfo.frequency.value = 0.045;
+    var lg = ctx.createGain();
+    lg.gain.value = 0;
+    this._springLfoDepth = lg;
+    lfo.connect(lg);
+    lg.connect(g.gain);
+    src.connect(bp);
+    bp.connect(g);
+    g.connect(this.layers.L3);
+    src.start();
+    lfo.start();
+  };
+
+  // L3 细雨：高通噪声极低音量 + 偶发微小水滴
+  MusicEngine.prototype._startRain = function () {
+    var ctx = this.ctx, self = this;
+    var src = ctx.createBufferSource();
+    src.buffer = this._noiseBuf;
+    src.loop = true;
+    src.playbackRate.value = 0.7;
+    var hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 6000;
+    var g = ctx.createGain();
+    g.gain.value = 0; // 初始静音，由门控按"连慢4字"条件淡入
+    this._rainGain = g;
+    src.connect(hp);
+    hp.connect(g);
+    g.connect(this.layers.L3);
+    src.start();
+    function droplet() {
+      if (!self.playing) return;
+      if (self._wantRain && self._nature > 0.5) {
+        var t = self.ctx.currentTime + 0.05;
+        var o = self.ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.value = 3000 + Math.random() * 4000;
+        var dg = self.ctx.createGain();
+        dg.gain.setValueAtTime(0, t);
+        dg.gain.linearRampToValueAtTime(0.016, t + 0.01);
+        dg.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+        o.connect(dg);
+        dg.connect(self.layers.L3);
+        o.start(t);
+        o.stop(t + 0.15);
+      }
+      self.timers.push(setTimeout(droplet, 2000 + Math.random() * 7000));
+    }
+    droplet();
+  };
+
+  // L4：gamma 脑波层（40Hz 纯正弦，极低音量，全程铺底）
+  MusicEngine.prototype._startGamma = function () {
+    var ctx = this.ctx;
+    var cfg = this.config.gamma || {};
+    if (cfg.off) return;
+    var freq = cfg.hz || 40;
+    var vol = (cfg.vol !== undefined && cfg.vol !== null) ? cfg.vol : 0.015;
+    if (!(vol > 0)) return;
+    var osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    var g = ctx.createGain();
+    g.gain.value = vol;
+    osc.connect(g);
+    g.connect(this.layers.L4);
+    osc.start();
+    // 缓慢浮现，不打扰入静；尊重用户的 40Hz 开关
+    this.layers.L4.gain.setTargetAtTime(this._gammaOn ? 1 : 0, ctx.currentTime, 4);
+  };
+
+  // 40Hz 铺底开关（用户可选）
+  MusicEngine.prototype.setGammaOn = function (on) {
+    this._gammaOn = !!on;
+    try { localStorage.setItem('sutra_gamma40', this._gammaOn ? '1' : '0'); } catch (e) {}
+    this._applyGates();
+  };
+  MusicEngine.prototype.getGammaOn = function () { return this._gammaOn !== false; };
+
+  MusicEngine.prototype.start = function () {
+    if (this.playing) return;
+    this._ensureCtx();
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+    this.playing = true;
+    this._activity = 0;          // 当前书写 activity（平滑值）
+    this._activityTarget = 0;    // 目标：setActivity() 设置
+    this._nature = 1;            // 自然声部电平 = 1 - activity
+    this._wantChime = false;     // 高音条件：停笔 > 通常5字
+    this._wantSpring = false;    // 泉消条件：慢写
+    this._wantRain = false;      // 细雨条件：连续慢写4字
+    this._chimeArmed = false;    // 高音实际可触发 = 条件成立且非疾书
+    this._startBass();
+    this._startGamma();
+    this._startLightChimes();
+    this._startPad();
+    this._startChime();
+    this._startSpring();
+    this._startRain();
+    this.setProgress(this._progress || 0);
+    var self = this;
+    this._gateTimer = setInterval(function () { self._applyGates(); }, 700);
+  };
+
+  MusicEngine.prototype.stop = function () {
+    this.playing = false;
+    this.timers.forEach(clearTimeout);
+    this.timers = [];
+    if (this._gateTimer) { clearInterval(this._gateTimer); this._gateTimer = 0; }
+    if (this.ctx) {
+      var self = this;
+      this.master.gain.setTargetAtTime(0, this.ctx.currentTime, 0.5);
+      setTimeout(function () {
+        if (!self.playing && self.ctx) {
+          self.ctx.close().catch(function () {});
+          self.ctx = null;
+        }
+      }, 1500);
+    }
+  };
+
+  MusicEngine.prototype.toggle = function () {
+    if (this.playing) { this.stop(); return false; }
+    this.start(); return true;
+  };
+
+  // 显示经文时静音 / 书写时淡入：不断 AudioContext，录制不中断
+  MusicEngine.prototype.setAudible = function (on) {
+    if (!this.ctx || !this.master) return;
+    var target = on ? (this.muted ? 0 : 0.6) : 0;
+    try { this.master.gain.setTargetAtTime(target, this.ctx.currentTime, 0.8); } catch (e) {}
+  };
+
+  /* 自然声出现条件：app.js 按书写节奏评估后传入
+   * {chime: 停笔>通常5字 → 高音（轻磬/小磬）, spring: 慢写 → 泉消, rain: 连慢4字 → 细雨} */
+  MusicEngine.prototype.setNatureFlags = function (f) {
+    f = f || {};
+    this._wantChime = !!f.chime;
+    this._wantSpring = !!f.spring;
+    this._wantRain = !!f.rain;
+  };
+
+  /* 书写 activity：0=静止/慢，1=疾书；内部平滑跟随 */
+  MusicEngine.prototype.setActivity = function (a) {
+    this._activityTarget = Math.max(0, Math.min(1, a || 0));
+  };
+
+  // 综合门控：进度 × 书写状态，每 0.7s 平滑跟随一次
+  MusicEngine.prototype._applyGates = function () {
+    if (!this.ctx || !this.playing) return;
+    this._activity += (this._activityTarget - this._activity) * 0.3;
+    if (Math.abs(this._activityTarget - this._activity) < 0.01) this._activity = this._activityTarget;
+    this._nature = 1 - this._activity;
+    var pg = this._progGates || [1, 1, 0, 1, 1];
+    var t = this.ctx.currentTime;
+    this.layers.L0.gain.setTargetAtTime(1, t, 2.5);
+    this.layers.L1.gain.setTargetAtTime(pg[1] * this._nature, t, 2.5);
+    this.layers.L2.gain.setTargetAtTime(pg[2] * (1 - 0.7 * this._activity), t, 2.5);
+    this.layers.L3.gain.setTargetAtTime(pg[3] * this._nature, t, 2.5);
+    this.layers.L4.gain.setTargetAtTime(this._gammaOn ? 1 : 0, t, 2.5);
+    // 高音实际可触发 = 条件成立且非疾书；泉消/细雨按各自条件淡入淡出（疾书时 L3 总线已静音）
+    this._chimeArmed = this._wantChime && this._nature > 0.45;
+    if (this._springGain) this._springGain.gain.setTargetAtTime(0.016 * (this._wantSpring ? 1 : 0), t, 2.5);
+    if (this._springLfoDepth) this._springLfoDepth.gain.setTargetAtTime(0.008 * (this._wantSpring ? 1 : 0), t, 2.5);
+    if (this._rainGain) this._rainGain.gain.setTargetAtTime(0.010 * (this._wantRain ? 1 : 0), t, 2.5);
+  };
+
+  /* 核心接口：抄写进度 0~1（L2 和声铺底仍随进度加层；L1/L3 自然声只跟书写状态） */
+  MusicEngine.prototype.setProgress = function (p) {
+    this._progress = Math.max(0, Math.min(1, p));
+    this._progGates = [1, 1, this._progress > 0.45 ? 1 : 0, 1, 1];
+    this._applyGates();
+  };
+
+  /* 录制：把写字时生成的音乐录下来，随作品一起保留 */
+  MusicEngine.prototype.startRecording = function () {
+    try {
+      this._ensureCtx();
+      if (!this._recDest) {
+        this._recDest = this.ctx.createMediaStreamDestination();
+        this.master.connect(this._recDest);
+      }
+      var MR = global.MediaRecorder;
+      if (!MR) return false;
+      var rec = new MR(this._recDest.stream);
+      var chunks = [];
+      var self = this;
+      rec.ondataavailable = function (e) {
+        if (e.data && e.data.size) chunks.push(e.data);
+      };
+      rec.onstop = function () {
+        var cb = self._recCb;
+        self._recCb = null;
+        self._recorder = null;
+        var blob = null;
+        try { blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' }); } catch (e) {}
+        if (cb) cb(blob);
+      };
+      rec.start(1000);
+      this._recorder = rec;
+      this._recCb = null;
+      return true;
+    } catch (e) { return false; }
+  };
+
+  MusicEngine.prototype.stopRecording = function (cb) {
+    this._recCb = cb || null;
+    try {
+      if (this._recorder && this._recorder.state !== 'inactive') {
+        this._recorder.stop();
+        return;
+      }
+    } catch (e) {}
+    this._recorder = null;
+    var f = this._recCb; this._recCb = null;
+    if (f) f(null);
+  };
+
+  global.MusicEngine = MusicEngine;
+})(window);
+
+</script>
+<script>
+/* inlined: writing.js */
+/* 抄经应用 · 全屏手指书写（无外部依赖）
+ *
+ * WritingPad(paperCanvas, inkCanvas, opts)
+ *   opts.onStrokeEnd(coverage, strokeCount)  每笔结束回调
+ *   opts.onFirstStroke()                     第一笔回调
+ *
+ *   setPen('pencil' | 'maobi' | 'gangbi')
+ *   setFont(fontStack)         设置临摹字字体
+ *   newChar(ch)                开始一个新字：画纸面 + 虚影字 + 重置检测网格
+ *   clearInk()                 清空墨迹（橡皮），保留虚影字
+ *   coverage()                 当前墨迹覆盖虚影字的比例 0~1
+ *   fadeOut(ms)                缓缓隐藏墨迹（可被 cancelFade 中断）
+ *   cancelFade()               中断隐藏，恢复墨迹
+ *   snapshot()                 导出当前字的成品图（dataURL，已裁剪）
+ *
+ * 笔：
+ *   铅笔：恒定细灰线
+ *   毛笔：浓墨大锋 + 晕染底层 + 毛丝缕锋；慢→粗浓，快→细并带飞白
+ *   钢笔：恒定适中深色线
+ *
+ * 完成检测：虚影字像素 → 48×48 占用网格；墨迹落入的格子 / 字的格子 ≥ 阈值即判为写成。
+ */
+(function (global) {
+  'use strict';
+
+  // 中日韩及常用 ASCII 标点：盖印时用小字号，避免字形占满整个字格显得过大
+  var PUNCT_RE = /[　-〿！-／：-＠［-｀｛-･\u2000-\u206F\u2E00-\u2E7F.,;:?!"'()\[\]{}…—–·•‹›«»\-/]/;
+
+  var GRID = 48;
+
+  var PENS = {
+    pencil: { width: 2.4, color: '#5a5a5a' },
+    gangbi: { width: 5, color: '#23232e' },
+    maobi: { color: '#2b2118' }, // 线宽动态
+  };
+
+  function WritingPad(paperCanvas, inkCanvas, opts) {
+    this.paper = paperCanvas;
+    this.ink = inkCanvas;
+    this.opts = opts || {};
+    this.pen = 'pencil';
+    this.fontStack = 'serif';
+    this.pctx = paperCanvas.getContext('2d');
+    this.ictx = inkCanvas.getContext('2d');
+    this.drawing = false;
+    this.points = [];
+    this.strokeCount = 0;
+    this.inkLength = 0;
+    this.charCells = null; // Uint8Array(GRID*GRID)：字占用的格
+    this.inkCells = null;  // Uint8Array(GRID*GRID)：墨迹落入的格
+    this.charCellCount = 0;
+    this.bbox = null;      // 虚影字包围盒（CSS px）
+    this.charPx = 0;       // 字号（CSS px）
+    this.fading = false;
+    this.fadeRaf = 0;
+    // 毛笔笔锋随字号自动缩放（newChar 时按虚影字包围盒校准）
+    this._brushMax = 34;
+    this._brushMin = 6;
+    // 落笔状态：死区 + 起笔收锋，避免落笔一团墨
+    this._inking = false;
+    this._strokeDist = 0;
+    this._downX = 0;
+    this._downY = 0;
+    this._resize();
+    this._bind();
+  }
+
+  WritingPad.prototype._sizeOf = function (canvas) {
+    var r = canvas.getBoundingClientRect();
+    return { w: Math.max(1, r.width), h: Math.max(1, r.height) };
+  };
+
+  WritingPad.prototype._resize = function () {
+    var self = this;
+    [this.paper, this.ink].forEach(function (c) {
+      var s = self._sizeOf(c);
+      var dpr = global.devicePixelRatio || 1;
+      c.width = Math.max(1, Math.round(s.w * dpr));
+      c.height = Math.max(1, Math.round(s.h * dpr));
+      c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+    });
+    this.pctx.lineCap = this.pctx.lineJoin = 'round';
+    this.ictx.lineCap = this.ictx.lineJoin = 'round';
+    if (this._char) this._drawPaper();
+  };
+
+  WritingPad.prototype.setPen = function (name) {
+    if (PENS[name]) this.pen = name;
+  };
+
+  WritingPad.prototype.setFont = function (stack) {
+    this.fontStack = stack || 'serif';
+    if (this._char) this._drawPaper();
+  };
+
+  /* ---------- 纸面：宣纸底 + 虚影字 ---------- */
+  WritingPad.prototype._drawPaper = function () {
+    var s = this._sizeOf(this.paper);
+    var ctx = this.pctx;
+    ctx.clearRect(0, 0, s.w, s.h);
+    // 宣纸底色 + 细微纹理
+    var g = ctx.createLinearGradient(0, 0, 0, s.h);
+    g.addColorStop(0, '#f4eddc');
+    g.addColorStop(1, '#efe5cf');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, s.w, s.h);
+
+    if (!this._char) return;
+    var px = Math.min(s.w, s.h) * 0.52;
+    this.charPx = px;
+    var cx = s.w / 2, cy = s.h * 0.44;
+    ctx.font = px + 'px ' + this.fontStack;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(140,115,70,0.30)';
+    ctx.fillText(this._char, cx, cy);
+    this._computeGrid(s, px, cx, cy);
+  };
+
+  // 在离屏画布上渲染虚影字，扫描像素得到包围盒与占用网格
+  WritingPad.prototype._computeGrid = function (s, px, cx, cy) {
+    var off = document.createElement('canvas');
+    off.width = Math.max(1, Math.round(s.w));
+    off.height = Math.max(1, Math.round(s.h));
+    var c = off.getContext('2d', { willReadFrequently: true });
+    c.font = px + 'px ' + this.fontStack;
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillStyle = '#000';
+    c.fillText(this._char, cx, cy);
+    var img;
+    try {
+      img = c.getImageData(0, 0, off.width, off.height);
+    } catch (e) {
+      this.bbox = { x: cx - px / 2, y: cy - px / 2, w: px, h: px };
+      this._fallbackGrid();
+      return;
+    }
+    var d = img.data, W = off.width, H = off.height;
+    var minX = W, minY = H, maxX = -1, maxY = -1;
+    for (var y = 0; y < H; y += 2) {
+      for (var x = 0; x < W; x += 2) {
+        if (d[(y * W + x) * 4 + 3] > 40) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (maxX < 0) { this._fallbackGrid(); return; }
+    // CSS px 坐标（off 与 CSS 1:1）
+    this.bbox = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+    this.charCells = new Uint8Array(GRID * GRID);
+    this.charCellCount = 0;
+    // 每格内 3×3 子采样：任一子点有墨即算字区（细笔画不漏检）
+    for (var gy = 0; gy < GRID; gy++) {
+      for (var gx = 0; gx < GRID; gx++) {
+        var hit = false;
+        for (var qy = 0; qy < 3 && !hit; qy++) {
+          for (var qx = 0; qx < 3 && !hit; qx++) {
+            var sx = Math.min(W - 1, Math.round(minX + (maxX - minX + 1) * (gx + (qx + 0.5) / 3) / GRID));
+            var sy = Math.min(H - 1, Math.round(minY + (maxY - minY + 1) * (gy + (qy + 0.5) / 3) / GRID));
+            if (d[(sy * W + sx) * 4 + 3] > 40) hit = true;
+          }
+        }
+        if (hit) {
+          this.charCells[gy * GRID + gx] = 1;
+          this.charCellCount++;
+        }
+      }
+    }
+    if (this.charCellCount === 0) this._fallbackGrid();
+  };
+
+  WritingPad.prototype._fallbackGrid = function () {
+    // 扫描失败时：以字号正方形为包围盒，全格视为字区
+    var s = this._sizeOf(this.paper);
+    var px = this.charPx || Math.min(s.w, s.h) * 0.52;
+    this.bbox = { x: s.w / 2 - px / 2, y: s.h * 0.44 - px / 2, w: px, h: px };
+    this.charCells = new Uint8Array(GRID * GRID).fill(1);
+    this.charCellCount = GRID * GRID;
+  };
+
+  /* ---------- 新字 / 清空 ---------- */
+  WritingPad.prototype.newChar = function (ch) {
+    this._char = ch || '　';
+    this.cancelFade();
+    this.ink.style.opacity = '1';
+    this.clearInk();
+    // 落笔记录：每个字从空白开始累积，供存储与回放
+    this._recStrokes = [];
+    this._recStroke = null;
+    this._charT0 = Date.now();
+    this._drawPaper();
+    // 按当前虚影字的实际显示大小校准毛笔笔锋
+    if (this.bbox) this._setBrushScale(Math.max(this.bbox.w, this.bbox.h));
+  };
+
+  WritingPad.prototype.clearInk = function () {
+    var s = this._sizeOf(this.ink);
+    this.ictx.clearRect(0, 0, s.w, s.h);
+    this.inkCells = new Uint8Array(GRID * GRID);
+    this.strokeCount = 0;
+    this.inkLength = 0;
+    this.drawing = false;
+    this.ink.style.opacity = '1';
+  };
+
+  /* ---------- 书写 ---------- */
+  WritingPad.prototype._pos = function (e) {
+    var r = this.ink.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top, t: Date.now() };
+  };
+
+  WritingPad.prototype._widthFor = function (speed) {
+    if (this.pen === 'pencil') return PENS.pencil.width;
+    if (this.pen === 'gangbi') return PENS.gangbi.width;
+    // 毛笔：慢→浓粗（_brushMax，随字号自动定），快→细（_brushMin）
+    var range = this._brushMax - this._brushMin;
+    return Math.max(this._brushMin, this._brushMax - Math.min(range, speed * range / 0.51));
+  };
+
+  // 按当前虚影字大小校准笔锋：最大锋宽 ≈ 字宽的 12%，最小 ≈ 2.5%
+  WritingPad.prototype._setBrushScale = function (charW) {
+    if (!charW || charW <= 0) return;
+    this._brushMax = Math.max(14, Math.min(46, charW * 0.12));
+    this._brushMin = Math.max(3, Math.min(8, charW * 0.025));
+  };
+
+  WritingPad.prototype._colorFor = function () {
+    return PENS[this.pen].color;
+  };
+
+  WritingPad.prototype._markCells = function (a, b, lineWidth) {
+    if (!this.bbox || !this.charCells) return;
+    // 按笔宽半径标记：细笔也不吃亏，胡乱涂抹仍难达标
+    var cellW = this.bbox.w / GRID, cellH = this.bbox.h / GRID;
+    var cellMin = Math.min(cellW, cellH);
+    var r = Math.max((lineWidth || 3) / 2, cellMin * 0.6);
+    var dx = b.x - a.x, dy = b.y - a.y;
+    var dist = Math.hypot(dx, dy);
+    var steps = Math.max(1, Math.ceil(dist / 3));
+    for (var i = 0; i <= steps; i++) {
+      var x = a.x + dx * i / steps, y = a.y + dy * i / steps;
+      var gx0 = Math.floor((x - r - this.bbox.x) / cellW);
+      var gx1 = Math.floor((x + r - this.bbox.x) / cellW);
+      var gy0 = Math.floor((y - r - this.bbox.y) / cellH);
+      var gy1 = Math.floor((y + r - this.bbox.y) / cellH);
+      for (var gy = gy0; gy <= gy1; gy++) {
+        for (var gx = gx0; gx <= gx1; gx++) {
+          if (gx < 0 || gx >= GRID || gy < 0 || gy >= GRID) continue;
+          var cxp = this.bbox.x + (gx + 0.5) * cellW;
+          var cyp = this.bbox.y + (gy + 0.5) * cellH;
+          if (Math.hypot(cxp - x, cyp - y) <= r + cellMin * 0.5) {
+            this.inkCells[gy * GRID + gx] = 1;
+          }
+        }
+      }
+    }
+  };
+
+  WritingPad.prototype.coverage = function () {
+    if (!this.charCellCount) return 0;
+    var hit = 0;
+    for (var i = 0; i < this.charCells.length; i++) {
+      if (this.charCells[i] && this.inkCells[i]) hit++;
+    }
+    return hit / this.charCellCount;
+  };
+
+  WritingPad.prototype._bind = function () {
+    var self = this;
+    this.ink.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      if (self.fading) return;
+      self.drawing = true;
+      self._smoothSpeed = null; // 每笔重新平滑测速
+      self._bristlePhase = Math.random() * Math.PI * 2; // 每笔毛丝走向不同
+      self._bristleDist = 0;
+      self._inking = false;   // 落笔死区：未行笔前不出墨
+      self._strokeDist = 0;
+      var dp = self._pos(e);
+      self._downX = dp.x;
+      self._downY = dp.y;
+      self.points = [dp];
+      self._recStroke = [];                       // 新一笔的落笔记录
+      self._recSize = self._sizeOf(self.ink);      // 记录时的画布尺寸（归一化用）
+      try { self.ink.setPointerCapture(e.pointerId); } catch (err) {}
+      if (self.opts.onStrokeStart) self.opts.onStrokeStart();
+      if (self.strokeCount === 0 && self.opts.onFirstStroke) self.opts.onFirstStroke();
+    });
+    this.ink.addEventListener('pointermove', function (e) {
+      if (!self.drawing || self.fading) return;
+      e.preventDefault();
+      var p = self._pos(e);
+      var last = self.points[self.points.length - 1];
+      self.points.push(p);
+      var segLen = Math.hypot(p.x - last.x, p.y - last.y);
+      self._strokeDist += segLen;
+      // 落笔死区（仅毛笔）：手指离开落笔点 4px 后才出墨，点按不留一团墨
+      if (self.pen === 'maobi' && !self._inking) {
+        if (Math.hypot(p.x - self._downX, p.y - self._downY) <= 4) return;
+        self._inking = true;
+      }
+      var dt = Math.max(1, p.t - last.t);
+      // 瞬时速度做上限裁剪 + 指数滑动平均：事件批量到达或时间戳抖动时笔锋不突变
+      var rawSpeed = Math.min(4, segLen / dt);
+      if (self._smoothSpeed == null) self._smoothSpeed = rawSpeed;
+      else self._smoothSpeed += (rawSpeed - self._smoothSpeed) * 0.35;
+      var w = self._widthFor(self._smoothSpeed);
+      if (self.pen === 'maobi') {
+        // 起笔收锋：行程前 28px 内笔锋由 40% 渐放到全宽
+        var taperIn = Math.min(1, self._strokeDist / 28);
+        w = self._brushMin + (w - self._brushMin) * (0.4 + 0.6 * taperIn);
+      }
+      self.inkLength += segLen;
+      self._drawSegment(last, p, w);
+      self._markCells(last, p, w);
+      // 落笔记录：归一化坐标 + 相对时间 + 归一化笔宽（回放时还原）
+      var rs = self._recSize || (self._recSize = self._sizeOf(self.ink));
+      var unit = Math.min(rs.w, rs.h) || 1;
+      self._recStroke.push([
+        +((p.x / rs.w).toFixed(4)),
+        +((p.y / rs.h).toFixed(4)),
+        Math.round(p.t - (self._charT0 || p.t)),
+        +((w / unit).toFixed(5))
+      ]);
+    });
+    function end() {
+      if (!self.drawing) return;
+      self.drawing = false;
+      self.strokeCount++;
+      if (self._recStroke && self._recStroke.length >= 2) self._recStrokes.push(self._recStroke);
+      self._recStroke = null;
+      if (self.opts.onStrokeEnd) self.opts.onStrokeEnd(self.coverage(), self.strokeCount);
+    }
+    this.ink.addEventListener('pointerup', end);
+    this.ink.addEventListener('pointercancel', end);
+    var rt;
+    global.addEventListener('resize', function () {
+      clearTimeout(rt);
+      rt = setTimeout(function () { self._resize(); }, 200);
+    });
+  };
+
+  WritingPad.prototype._drawSegment = function (a, b, w) {
+    var ctx = this.ictx;
+    if (this.pen !== 'maobi') {
+      ctx.strokeStyle = this._colorFor();
+      ctx.lineWidth = w;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      return;
+    }
+    // ---- 毛笔：三层渲染 ----
+    var dx = b.x - a.x, dy = b.y - a.y;
+    var len = Math.hypot(dx, dy) || 0.001;
+    var nx = -dy / len, ny = dx / len; // 法线方向
+    // 1) 晕染底层：宽而淡，墨韵"浓"
+    ctx.strokeStyle = 'rgba(48,36,24,0.16)';
+    ctx.lineWidth = w * 1.6;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    // 2) 主锋：浓黑饱满
+    ctx.strokeStyle = 'rgba(24,18,12,0.93)';
+    ctx.lineWidth = w;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    // 3) 毛丝：四缕偏置细锋，边缘参差；运笔越快越容易飞白（随机跳过，露出纸色）
+    this._bristleDist = (this._bristleDist || 0) + len;
+    var speedNorm = Math.min(1, len / 24);
+    var lanes = [-0.46, -0.22, 0.22, 0.46];
+    var phase = this._bristlePhase || 0;
+    for (var k = 0; k < lanes.length; k++) {
+      if (Math.random() < speedNorm * 0.45) continue; // 飞白
+      var sway = Math.sin(this._bristleDist * 0.11 + k * 1.7 + phase) * w * 0.07;
+      var off = lanes[k] * w + sway;
+      ctx.strokeStyle = 'rgba(24,18,12,0.6)';
+      ctx.lineWidth = Math.max(1, w * 0.20);
+      ctx.beginPath();
+      ctx.moveTo(a.x + nx * off, a.y + ny * off);
+      ctx.lineTo(b.x + nx * off, b.y + ny * off);
+      ctx.stroke();
+    }
+    // 4) 飞白：快速行笔时在主锋内部擦出纸色丝缕（destination-out 透出宣纸底）；
+    //    固定缕位 + 缓慢起伏，丝缕沿笔画连贯不断
+    if (speedNorm > 0.3) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      var feiLanes = [-0.28, 0.08, 0.34];
+      for (var sIdx = 0; sIdx < feiLanes.length; sIdx++) {
+        var soff = (feiLanes[sIdx] + Math.sin(this._bristleDist * 0.008 + sIdx * 2.1 + phase) * 0.08) * w;
+        var sAlpha = 0.30 + 0.25 * Math.sin(this._bristleDist * 0.006 + sIdx * 1.7 + phase * 0.7);
+        ctx.strokeStyle = 'rgba(0,0,0,' + Math.max(0.12, sAlpha).toFixed(2) + ')';
+        ctx.lineWidth = Math.max(1, w * 0.10);
+        ctx.beginPath();
+        ctx.moveTo(a.x + nx * soff, a.y + ny * soff);
+        ctx.lineTo(b.x + nx * soff, b.y + ny * soff);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  };
+
+  /* ---------- 缓缓隐藏 / 继续改写 ---------- */
+  WritingPad.prototype.fadeOut = function (ms, done) {
+    var self = this;
+    this.cancelFade();
+    this.fading = true;
+    this.ink.style.transition = 'opacity ' + ms + 'ms ease';
+    this.ink.style.opacity = '0';
+    this._fadeTimer = setTimeout(function () {
+      self.fading = false;
+      self.ink.style.transition = '';
+      if (done) done();
+    }, ms + 60);
+  };
+
+  WritingPad.prototype.cancelFade = function () {
+    if (this._fadeTimer) clearTimeout(this._fadeTimer);
+    this._fadeTimer = 0;
+    this.fading = false;
+    if (this.ink) {
+      this.ink.style.transition = '';
+      this.ink.style.opacity = '1';
+    }
+    if (this.fadeRaf) cancelAnimationFrame(this.fadeRaf);
+  };
+
+  /* ---------- 导出成品（裁剪到字区） ---------- */
+  WritingPad.prototype.snapshot = function () {
+    var dpr = global.devicePixelRatio || 1;
+    var tmp = document.createElement('canvas');
+    var b = this.bbox;
+    var pad = Math.max(b.w, b.h) * 0.25;
+    var x = Math.max(0, b.x - pad), y = Math.max(0, b.y - pad);
+    var w = Math.min(this.paper.width / dpr - x, b.w + pad * 2);
+    var h = Math.min(this.paper.height / dpr - y, b.h + pad * 2);
+    var outW = 360, outH = Math.round(360 * h / w);
+    tmp.width = outW;
+    tmp.height = outH;
+    var c = tmp.getContext('2d');
+    c.fillStyle = '#f4eddc';
+    c.fillRect(0, 0, outW, outH);
+    c.drawImage(this.ink, x * dpr, y * dpr, w * dpr, h * dpr, 0, 0, outW, outH);
+    try {
+      return tmp.toDataURL('image/png');
+    } catch (e) {
+      return '';
+    }
+  };
+
+  global.WritingPad = WritingPad;
+
+  // 把当前字（自动跳过的标点）以墨色盖印到墨层，成品依然完整
+  // 标点用小字号盖印：字形按正常比例显示，不占满整个字格
+  WritingPad.prototype.stampChar = function (ch) {
+    var s = this._sizeOf(this.ink);
+    var ctx = this.ictx;
+    var px = (this.charPx || Math.min(s.w, s.h) * 0.52);
+    if (PUNCT_RE.test(ch)) px *= 0.55;
+    ctx.save();
+    ctx.fillStyle = (PENS[this.pen] && PENS[this.pen].color) || '#2b2118';
+    ctx.font = px + 'px ' + this.fontStack;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(ch, s.w / 2, s.h * 0.44);
+    ctx.restore();
+  };
+
+  // 取出当前字的落笔记录（最小存储单位）：{ pen, ar, strokes: [[[x,y,t,w]...]] }
+  // x,y 为相对画布的 0~1 坐标；t 为相对本字首笔的毫秒；w 为相对画布短边的笔宽；
+  // ar 为书写画布宽高比（重画时按原比例显示，不拉伸变形）
+  WritingPad.prototype.getCharRecord = function () {
+    var s = this._sizeOf(this.ink);
+    return { pen: this.pen, ar: s.w / s.h, strokes: this._recStrokes || [] };
+  };
+
+  // 按原始宽高比 ar(=w/h) 把内容 contain 进 w×h，返回 {ox,oy,dw,dh}
+  WritingPad._fitRect = function (w, h, ar) {
+    if (!(ar > 0)) return { ox: 0, oy: 0, dw: w, dh: h };
+    var dw, dh;
+    if (ar > w / h) { dw = w; dh = w / ar; }
+    else { dh = h; dw = h * ar; }
+    return { ox: (w - dw) / 2, oy: (h - dh) / 2, dw: dw, dh: dh };
+  };
+
+  // 当前视口宽高比（旧记录无 ar 时的兜底：同一台手机上看即准确）
+  WritingPad._viewportAr = function () {
+    return (global.innerWidth && global.innerHeight) ? global.innerWidth / global.innerHeight : 0;
+  };
+
+  // 回放落笔记录：按原时间节奏重画（过长则加速，上限 maxMs）
+  WritingPad.prototype.replayStrokes = function (rec, opts) {
+    opts = opts || {};
+    var self = this;
+    this.cancelReplay();
+    this.setPen(rec.pen || 'maobi');
+    this.clearInk();
+    this._bristlePhase = Math.random() * Math.PI * 2;
+    this._bristleDist = 0;
+    var s = this._sizeOf(this.ink);
+    var fr = WritingPad._fitRect(s.w, s.h, (rec && rec.ar) || WritingPad._viewportAr());
+    var unit = Math.min(fr.dw, fr.dh) || 1;
+    var segs = [];
+    (rec.strokes || []).forEach(function (st) {
+      for (var i = 1; i < st.length; i++) segs.push([st[i - 1], st[i]]);
+    });
+    if (!segs.length) { if (opts.onDone) opts.onDone(); return; }
+    var t0 = segs[0][0][2];
+    var span = Math.max(1, segs[segs.length - 1][1][2] - t0);
+    var maxMs = opts.maxMs || 8000;
+    var scale = span > maxMs ? maxMs / span : 1;
+    var raf = global.requestAnimationFrame ||
+      function (fn) { return setTimeout(function () { fn(Date.now()); }, 16); };
+    var i = 0, start = null;
+    function frame(now) {
+      if (start === null) start = now;
+      var el = (now - start) / scale;
+      var guard = 0;
+      while (i < segs.length && (segs[i][1][2] - t0) <= el && guard++ < 5000) {
+        var a = segs[i][0], b = segs[i][1];
+        self._drawSegment(
+          { x: fr.ox + a[0] * fr.dw, y: fr.oy + a[1] * fr.dh },
+          { x: fr.ox + b[0] * fr.dw, y: fr.oy + b[1] * fr.dh },
+          b[3] * unit
+        );
+        i++;
+      }
+      if (i < segs.length) {
+        self._replayRaf = raf(frame);
+      } else {
+        self._replayRaf = 0;
+        if (opts.onDone) opts.onDone();
+      }
+    }
+    self._replayRaf = raf(frame);
+  };
+
+  WritingPad.prototype.cancelReplay = function () {
+    if (this._replayRaf) {
+      if (global.cancelAnimationFrame) global.cancelAnimationFrame(this._replayRaf);
+      else clearTimeout(this._replayRaf);
+      this._replayRaf = 0;
+    }
+  };
+
+  /* 静态渲染一字的笔迹（作品查看 / PDF 用）：不动画，一次画完。
+   * rec: {pen, strokes:[[[x,y,t,w]...]]} 或 {auto:'punct'}；ch 仅标点盖印用 */
+  WritingPad.drawStatic = function (canvas, rec, ch) {
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.lineCap = ctx.lineJoin = 'round';
+    var fr = WritingPad._fitRect(canvas.width, canvas.height,
+      (rec && rec.ar) || WritingPad._viewportAr());
+    if (rec && rec.auto === 'punct') {
+      var px = Math.min(fr.dw, fr.dh) * 0.52 * 0.55;
+      ctx.save();
+      ctx.fillStyle = '#2b2118';
+      ctx.font = px + 'px "Kaiti SC","KaiTi","STKaiti",serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(ch || '', fr.ox + fr.dw / 2, fr.oy + fr.dh * 0.44);
+      ctx.restore();
+      return;
+    }
+    var fake = Object.create(WritingPad.prototype);
+    fake.ictx = ctx;
+    fake.pen = (rec && rec.pen) || 'maobi';
+    fake._bristleDist = 0;
+    fake._bristlePhase = Math.random() * Math.PI * 2;
+    var unit = Math.min(fr.dw, fr.dh) || 1;
+    ((rec && rec.strokes) || []).forEach(function (st) {
+      for (var i = 1; i < st.length; i++) {
+        var a = st[i - 1], b = st[i];
+        WritingPad.prototype._drawSegment.call(fake,
+          { x: fr.ox + a[0] * fr.dw, y: fr.oy + a[1] * fr.dh },
+          { x: fr.ox + b[0] * fr.dw, y: fr.oy + b[1] * fr.dh },
+          (b[3] || 0.03) * unit);
+      }
+    });
+  };
+
+  /* 模板字形测量见 glyphBox；作品查看器 PDF 用：复刻书写时 pad.snapshot() 的取景 ——
+  /* 模板字形包围盒（与 pad._computeGrid 同算法；renderCropped / 整纸通用格共用）。
+   * ar：参考画布宽高比（renderCropped 传本字 rec.ar；整纸传当前视口比即可） */
+  WritingPad.glyphBox = function (ch, fontStack, ar) {
+    var W = 390;
+    var r = ar || WritingPad._viewportAr() || 0.5;
+    var H = Math.max(1, Math.round(W / r));
+    var px = Math.min(W, H) * 0.52;
+    var cx = W / 2, cy = H * 0.44;
+    var fs = fontStack || '"Kaiti SC","KaiTi","STKaiti",serif';
+    var font = px + 'px ' + fs;
+    try {
+      var off = document.createElement('canvas');
+      off.width = W; off.height = H;
+      var c = off.getContext('2d', { willReadFrequently: true });
+      c.font = font;
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillStyle = '#000';
+      c.fillText(ch || '', cx, cy);
+      var d = c.getImageData(0, 0, W, H).data;
+      var minX = W, minY = H, maxX = -1, maxY = -1, x, y;
+      for (y = 0; y < H; y += 2) {
+        for (x = 0; x < W; x += 2) {
+          if (d[(y * W + x) * 4 + 3] > 40) {
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (y < minY) minY = y; if (y > maxY) maxY = y;
+          }
+        }
+      }
+      if (maxX < 0) throw 0;
+      return { bx: minX, by: minY, bw: maxX - minX + 1, bh: maxY - minY + 1,
+               W: W, H: H, px: px, cx: cx, cy: cy, font: font, fs: fs };
+    } catch (e) {
+      return { bx: cx - px / 2, by: cy - px / 2, bw: px, bh: px,
+               W: W, H: H, px: px, cx: cx, cy: cy, font: font, fs: fs };
+    }
+  };
+
+  /* 整纸通用格：所有字共用 side×side 正方形（含 25% 留白），各自以包围盒中心为锚居中，
+   * 同一比例、透明底、无格线。side 取全部字形边框的最大值，由调用方先量好传入。
+   * trailPunct：尾随标点（不占格，贴在本字格右下角，约 0.36 格大小）。 */
+  WritingPad.renderSheetCell = function (rec, ch, fontStack, side, box, trailPunct) {
+    box = box || WritingPad.glyphBox(ch, fontStack, (rec && rec.ar) || null);
+    var W = box.W, H = box.H, px = box.px, cx = box.cx, cy = box.cy, fs = box.fs;
+    var cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    if (rec && rec.auto === 'punct') {
+      // 标点复刻 pad.stampChar：0.55x 字号、同字体栈、同锚点盖印
+      var c2 = cv.getContext('2d');
+      c2.font = (px * 0.55) + 'px ' + fs;
+      c2.textAlign = 'center';
+      c2.textBaseline = 'middle';
+      c2.fillStyle = '#2b2118';
+      c2.fillText(ch || '', cx, cy);
+    } else {
+      WritingPad.drawStatic(cv, rec, ch);
+    }
+    var bcx = box.bx + box.bw / 2, bcy = box.by + box.bh / 2;
+    var sx = Math.max(0, Math.min(W - side, Math.round(bcx - side / 2)));
+    var sy = Math.max(0, Math.min(H - side, Math.round(bcy - side / 2)));
+    var out = 200, tmp = document.createElement('canvas');
+    tmp.width = out; tmp.height = out;
+    var t2d = tmp.getContext('2d');
+    t2d.drawImage(cv, sx, sy, side, side, 0, 0, out, out);
+    if (trailPunct) {
+      // 标点不占格：贴在上一个字格的右下角（约 0.36 格，与书写时 0.55x 印章同比例）
+      t2d.font = (out * 0.36) + 'px ' + fs;
+      t2d.textAlign = 'center';
+      t2d.textBaseline = 'middle';
+      t2d.fillStyle = '#2b2118';
+      t2d.fillText(trailPunct, out * 0.76, out * 0.78);
+    }
+    try { return tmp.toDataURL('image/png'); } catch (e2) { return ''; }
+  };
+
+  WritingPad.renderCropped = function (rec, ch, fontStack) {
+    var box = WritingPad.glyphBox(ch, fontStack, (rec && rec.ar) || null);
+    var W = box.W, H = box.H, px = box.px, cx = box.cx, cy = box.cy, fs = box.fs;
+    var bx = box.bx, by = box.by, bw = box.bw, bh = box.bh;
+    // 2) 重画字迹。标点复刻 pad.stampChar：0.55x 字号、同字体栈、同锚点盖印，
+    //    与书写时的成品快照完全一致（drawStatic 的标点分支字体不同，裁剪会对不上）
+    var cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    if (rec && rec.auto === 'punct') {
+      var c2 = cv.getContext('2d');
+      c2.font = (px * 0.55) + 'px ' + fs;
+      c2.textAlign = 'center';
+      c2.textBaseline = 'middle';
+      c2.fillStyle = '#2b2118';
+      c2.fillText(ch || '', cx, cy);
+    } else {
+      WritingPad.drawStatic(cv, rec, ch);
+    }
+    // 3) snapshot 同款裁剪：包围盒四周留 25%，输出 360px 宽，纸底 #f4eddc
+    var pad = Math.max(bw, bh) * 0.25;
+    var sx = Math.max(0, bx - pad), sy = Math.max(0, by - pad);
+    var sw = Math.min(W - sx, bw + pad * 2), sh = Math.min(H - sy, bh + pad * 2);
+    var outW = 360, outH = Math.max(1, Math.round(360 * sh / sw));
+    var tmp = document.createElement('canvas');
+    tmp.width = outW; tmp.height = outH;
+    var t = tmp.getContext('2d');
+    t.fillStyle = '#f4eddc';
+    t.fillRect(0, 0, outW, outH);
+    t.drawImage(cv, sx, sy, sw, sh, 0, 0, outW, outH);
+    try { return tmp.toDataURL('image/png'); } catch (e2) { return ''; }
+  };
+})(window);
+
+</script>
+<script>
+/* inlined: app.js */
 /* 抄经应用 · 主流程（无构建、原生 JS）
  *
  * 流程：推荐码 → 注册/登录（手机或邮箱）→ 经文库 → 选字体 → 开场（经名2秒 → 段落慢读高亮）→
@@ -3063,3 +5109,7 @@
     }).catch(function () {});
   })();
 })();
+
+</script>
+</body>
+</html>

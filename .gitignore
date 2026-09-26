@@ -9,3 +9,7 @@ certs/*.key
 # mobile 打包工程
 mobile/www/
 mobile/node_modules/
+
+# 手工构建缓存与产物
+mobile/.deps/
+mobile/build/

@@ -284,6 +284,35 @@ def health():
     return jsonify({"ok": True, "time": datetime.now().isoformat()})
 
 
+# ---------- App 热更新：版本号取 index.html 里 app.js?v=N（部署时统一升） ----------
+_FRONTEND_V_RE = re.compile(r"app\.js\?v=(\d+)")
+
+
+def frontend_version():
+    try:
+        with open(os.path.join(FRONTEND_DIR, "index.html"), encoding="utf-8") as f:
+            m = _FRONTEND_V_RE.search(f.read())
+            return int(m.group(1)) if m else 0
+    except Exception:
+        return 0
+
+
+@app.route("/api/app/version")
+def app_version():
+    return jsonify({"v": frontend_version()})
+
+
+@app.route("/api/app/bundle")
+def app_bundle():
+    # 单文件 bundle：部署时由 build_bundle.py 生成到 frontend/dist/bundle.html
+    d = os.path.join(FRONTEND_DIR, "dist")
+    if not os.path.exists(os.path.join(d, "bundle.html")):
+        abort(404)
+    resp = send_from_directory(d, "bundle.html")
+    resp.headers["Content-Type"] = "text/html; charset=utf-8"
+    return resp
+
+
 @app.route("/api/invite/verify", methods=["POST"])
 def invite_verify():
     data = request.get_json(silent=True) or {}
