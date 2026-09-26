@@ -235,9 +235,13 @@
   // 各屏的功能按钮清单（书写屏用自己的工具菜单，不走全局；顶栏已全部移除）
   function toolsFor(id) {
     if (id === 'screen-library') {
-      // 首页已有抄本入口；只保留登录（未登录时）
-      if (getToken()) return [];
-      return [{ label: '登录', onClick: gotoLogin }];
+      // 抄本入口收进工具菜单（首页只留开始抄写/继续）
+      var items = [
+        { label: '公开抄本', onClick: function () { openCollection('public'); } },
+        { label: '我的抄本', onClick: function () { openCollection('mine'); } },
+      ];
+      if (!getToken()) items.push({ label: '登录', onClick: gotoLogin });
+      return items;
     }
     if (id === 'screen-collection') {
       return [{ label: '经库', onClick: function () { showScreen('screen-library'); } }];
@@ -349,7 +353,7 @@
 
   /* ---------- 2. 注册 / 登录 ---------- */
   var authMode = 'register';   // register | login
-  var authType = 'phone';      // phone | email
+  var authType = 'email';       // phone | email（短信通道未配置前只留邮箱）
 
   function refreshAuthUI() {
     $('auth-title').textContent = authMode === 'register' ? '注册' : '登录';
@@ -365,6 +369,7 @@
     acc.placeholder = authType === 'phone' ? '手机号' : '邮箱';
     acc.inputMode = authType === 'phone' ? 'tel' : 'email';
     $('auth-code-row').style.display = authMode === 'register' ? 'flex' : 'none';
+    $('btn-auth-switch').textContent = authMode === 'register' ? '已有账号？去登录' : '还没有账号？立即注册';
     $('auth-msg').textContent = '';
     $('auth-msg').style.color = '';
   }
@@ -378,6 +383,10 @@
 
   $('chip-mode-register').addEventListener('click', function () { authMode = 'register'; refreshAuthUI(); });
   $('chip-mode-login').addEventListener('click', function () { authMode = 'login'; refreshAuthUI(); });
+  $('btn-auth-switch').addEventListener('click', function () {
+    authMode = authMode === 'register' ? 'login' : 'register';
+    refreshAuthUI();
+  });
   $('chip-type-phone').addEventListener('click', function () { authType = 'phone'; refreshAuthUI(); });
   $('chip-type-email').addEventListener('click', function () { authType = 'email'; refreshAuthUI(); });
 
@@ -535,8 +544,6 @@
     $('home-dedicate').textContent = '🪷 回向' + (dc > 0 ? ' ' + dc : '');
     // 开始抄写：直达抄写开新作（与原来点经书卡片一致）
     $('home-start').onclick = function () { openSutra(s.id); };
-    $('home-mine').onclick = function () { openCollection('mine'); };
-    $('home-public').onclick = function () { openCollection('public'); };
     $('home-dedicate').onclick = function () { openDedicationWall(s.id, s.title); };
     // 继续上次：找最近一部没写完的作品（登录/匿名都支持）
     var rb = $('home-resume');

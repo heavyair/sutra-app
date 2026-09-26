@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#1a1611">
 <title>抄经 · 静心</title>
-<link rel="stylesheet" href="styles.css?v=76">
+<link rel="stylesheet" href="styles.css?v=77">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@600&display=swap">
 </head>
@@ -34,9 +34,9 @@
         <button class="chip active" id="chip-mode-register">注册</button>
         <button class="chip" id="chip-mode-login">登录</button>
       </div>
-      <div class="filter-row" style="justify-content:center;margin-top:8px">
-        <button class="chip active" id="chip-type-phone">手机</button>
-        <button class="chip" id="chip-type-email">邮箱</button>
+      <div class="filter-row" id="auth-type-row" style="justify-content:center;margin-top:8px;display:none">
+        <button class="chip" id="chip-type-phone">手机</button>
+        <button class="chip active" id="chip-type-email">邮箱</button>
       </div>
       <input id="auth-account" class="invite-input" placeholder="手机号" inputmode="tel" autocomplete="tel">
       <div id="auth-code-row" class="code-row">
@@ -46,6 +46,7 @@
       <input id="auth-password" class="invite-input" type="password" placeholder="密码（至少 6 位）" autocomplete="current-password">
       <button id="btn-auth-submit" class="btn-primary">注册</button>
       <p id="auth-msg" class="msg"></p>
+      <button id="btn-auth-switch" class="btn-ghost"></button>
       <button id="btn-auth-reinvite" class="btn-ghost">重新输入推荐码</button>
     </div>
   </section>
@@ -59,10 +60,6 @@
       <button id="home-start" class="btn-home-primary">开始抄写</button>
       <button id="home-resume" class="btn-home-secondary hidden"></button>
       <div class="home-links">
-        <button id="home-mine" class="link-quiet">我的抄本</button>
-        <span class="link-sep">·</span>
-        <button id="home-public" class="link-quiet">公开抄本</button>
-        <span class="link-sep">·</span>
         <button id="home-dedicate" class="link-quiet"></button>
       </div>
     </div>
@@ -282,8 +279,8 @@
 <!-- 打印专用：屏幕上隐藏，打印时显示 -->
 <div id="print-sheet"></div>
 
-<script src="music.js?v=76"></script>
-<script src="writing.js?v=76"></script>
-<script src="app.js?v=76"></script>
+<script src="music.js?v=77"></script>
+<script src="writing.js?v=77"></script>
+<script src="app.js?v=77"></script>
 </body>
 </html>
